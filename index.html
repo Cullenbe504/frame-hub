@@ -1,0 +1,1969 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Frame Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* layout: full-bleed ambient home screen plus a Weather / Calendar / Photos screen, paged left-right like a Nest Hub, D-pad and touch both drive paging */
+  :root{
+    --ink:#0b0c0f;
+    --paper:#f5f1e8;
+    --accent:#e8a33d;
+    --glass:rgba(11,12,15,.55);
+    --glass-solid:#17181c;
+    --glass-border:rgba(245,241,232,.14);
+    --mute:rgba(245,241,232,.62);
+    --font-display:'Manrope',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --font-body:'Work Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+    color-scheme:dark;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--ink);
+    color:var(--paper);
+    font-family:var(--font-body);
+    overflow:hidden;
+  }
+
+  /* ===== screens ===== */
+  .screens{
+    position:fixed; top:0; right:0; bottom:0; left:0;
+  }
+  .screen{
+    position:absolute; top:0; right:0; bottom:0; left:0;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .35s ease;
+  }
+  .screen.active{opacity:1; pointer-events:auto;}
+
+  /* ----- Home screen ----- */
+  .stage{position:fixed; top:0; right:0; bottom:0; left:0; overflow:hidden;}
+  .photo{
+    position:absolute; top:-3%; right:-3%; bottom:-3%; left:-3%;
+    background-size:cover; background-position:center;
+    opacity:0; transition:opacity 2.2s ease;
+  }
+  .photo.active{opacity:1;}
+  @keyframes kenburns{0%{transform:scale(1.0);}50%{transform:scale(1.06);}100%{transform:scale(1.0);}}
+  @media (prefers-reduced-motion:reduce){.photo{animation:none;}}
+
+  .scrim{
+    position:fixed; top:0; right:0; bottom:0; left:0; pointer-events:none;
+    background:
+      linear-gradient(to top, rgba(0,0,0,.62) 0%, rgba(0,0,0,.18) 26%, rgba(0,0,0,0) 46%),
+      linear-gradient(to bottom, rgba(0,0,0,.5) 0%, rgba(0,0,0,0) 22%);
+  }
+
+  .layer{
+    position:fixed; top:0; right:0; bottom:0; left:0;
+    padding-top:22px;
+    padding-bottom:22px;
+    padding-left:22px;
+    padding-right:22px;
+    display:flex; flex-direction:column; justify-content:space-between;
+    pointer-events:none;
+  }
+  .layer > *{pointer-events:auto;}
+
+  .top-row{display:flex; justify-content:flex-end; align-items:flex-start;}
+
+  .glass-card{
+    background:var(--glass);
+    border:1px solid var(--glass-border);
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border-radius:20px;
+  }
+
+  .weather{display:flex; align-items:center; padding:12px 18px;}
+  .weather svg{width:38px;height:38px;flex:none;}
+  .weather-readout{display:flex;flex-direction:column;line-height:1.15;}
+  .weather-temp{font-family:var(--font-display);font-weight:700;font-size:28px;font-variant-numeric:tabular-nums;}
+  .weather-sub{font-size:12px;color:var(--mute);white-space:nowrap;}
+
+  .icon-btn{
+    width:42px;height:42px;flex:none;
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    opacity:.55;
+    transition:opacity .2s ease, transform .2s ease;
+    cursor:pointer;
+  }
+  .icon-btn:hover,.icon-btn:focus{opacity:1;}
+  .icon-btn svg{width:20px;height:20px;}
+  #gearBtn:hover,#gearBtn:focus{transform:rotate(25deg);}
+
+  .bottom-row{display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap;}
+
+  .clock-block{min-width:0;}
+  .time{
+    font-family:var(--font-display);font-weight:800;
+    font-size:12vw;line-height:1;letter-spacing:-.02em;
+    font-variant-numeric:tabular-nums;
+    text-shadow:0 2px 28px rgba(0,0,0,.35);
+  }
+  .time .ampm{font-size:.32em;font-weight:700;margin-left:10px;color:var(--mute);vertical-align:middle;}
+  .date{font-size:2.4vw;color:var(--mute);font-weight:500;margin-top:6px;}
+
+  .agenda{padding:16px 20px;min-width:220px;max-width:340px;}
+  .agenda-title{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);margin-bottom:10px;}
+  .agenda-list{display:flex;flex-direction:column;}
+  .agenda-item{display:flex;align-items:baseline;font-size:14px;}
+  .agenda-time{font-variant-numeric:tabular-nums;color:var(--accent);font-weight:600;flex:none;width:68px;}
+  .agenda-label{color:var(--paper);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .agenda-empty{color:var(--mute);font-size:13px;}
+
+  /* ----- paging chrome shared by all screens ----- */
+  .page-chevron{
+    position:fixed; top:50%; transform:translateY(-50%);
+    width:48px;height:48px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--glass); border:1px solid var(--glass-border);
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    opacity:0; transition:opacity .2s ease;
+    cursor:pointer; z-index:30;
+  }
+  .screens:hover .page-chevron{opacity:.55;}
+  .page-chevron:hover{opacity:1 !important;}
+  .page-chevron svg{width:22px;height:22px;}
+  #prevPage{left:14px;}
+  #nextPage{right:14px;}
+
+  .page-dots{
+    position:fixed; bottom:14px; left:50%; transform:translateX(-50%);
+    display:flex; z-index:30;
+  }
+  .page-dot{width:7px;height:7px;border-radius:50%;background:rgba(245,241,232,.35);transition:background .2s ease, width .2s ease;}
+  .page-dot.active{background:var(--accent); width:20px; border-radius:4px;}
+
+  /* ----- generic sub-screen layout (Weather / Calendar / Photos) ----- */
+  .sub-screen{
+    position:absolute; top:0; right:0; bottom:0; left:0;
+    background:var(--ink);
+    padding:28px 28px 60px 28px;
+    overflow-y:auto;
+    display:flex; flex-direction:column;
+  }
+  .sub-title{font-family:var(--font-display);font-weight:800;font-size:26px;}
+
+  /* Weather screen */
+  .wx-now{display:flex;align-items:center;}
+  .wx-now svg{width:72px;height:72px;}
+  .wx-now-temp{font-family:var(--font-display);font-weight:800;font-size:56px;font-variant-numeric:tabular-nums;}
+  .wx-now-sub{color:var(--mute);font-size:14px;}
+  .wx-hourly{display:flex;overflow-x:auto;padding-bottom:4px;}
+  .wx-hour{flex:none;width:72px;text-align:center;padding:14px 0;border-radius:16px;}
+  .wx-hour svg{width:26px;height:26px;margin:6px 0;}
+  .wx-hour-label{font-size:12px;color:var(--mute);}
+  .wx-hour-temp{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;}
+  .wx-daily{display:flex;flex-direction:column;}
+  .wx-day-row{display:flex;align-items:center;padding:10px 14px;}
+  .wx-day-name{width:84px;color:var(--paper);font-size:14px;}
+  .wx-day-row svg{width:22px;height:22px;flex:none;}
+  .wx-day-range{margin-left:auto;font-variant-numeric:tabular-nums;font-size:14px;color:var(--mute);}
+  .wx-day-range b{color:var(--paper);font-weight:600;}
+
+  /* Calendar screen */
+  .cal-frame-wrap{flex:1;min-height:0;border-radius:20px;overflow:hidden;border:1px solid var(--glass-border);}
+  .cal-frame-wrap iframe{width:100%;height:100%;border:0;min-height:420px;background:#fff;}
+  .empty-hint{color:var(--mute);font-size:14px;line-height:1.6;max-width:480px;}
+  .empty-hint code{background:rgba(255,255,255,.08);padding:2px 6px;border-radius:5px;}
+
+  /* Photos screen */
+  .photo-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(160px,1fr));gap:10px;}
+  .photo-thumb{
+    height:0;padding-bottom:100%;border-radius:14px;background-size:cover;background-position:center;
+    cursor:pointer; border:2px solid transparent;
+  }
+  .photo-thumb.focused{border-color:var(--accent);}
+  .lightbox{
+    position:fixed;top:0; right:0; bottom:0; left:0;background:rgba(0,0,0,.9);
+    display:flex;align-items:center;justify-content:center;
+    z-index:60;
+  }
+  .lightbox[hidden]{display:none!important;}
+  .lightbox img{max-width:92vw;max-height:88vh;border-radius:10px;object-fit:contain;}
+  .lightbox-close{position:fixed;top:18px;right:18px;}
+
+  /* ----- settings modal ----- */
+  .modal-overlay{
+    position:fixed;top:0; right:0; bottom:0; left:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;padding:24px;z-index:50;
+  }
+  .modal-overlay[hidden]{display:none!important;}
+  .modal{
+    width:100%;max-width:520px;max-height:86vh;overflow-y:auto;
+    background:var(--glass-solid);border:1px solid var(--glass-border);border-radius:22px;
+    padding:24px;color:var(--paper);
+  }
+  .modal h2{font-family:var(--font-display);font-size:19px;margin:0 0 4px;font-weight:700;}
+  .modal-section-note{font-size:12px;color:var(--mute);margin:0 0 18px;line-height:1.5;}
+  .field{margin-bottom:20px;}
+  .field label{display:block;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);margin-bottom:8px;}
+  .field .hint{font-size:12px;color:var(--mute);margin-top:6px;line-height:1.5;}
+  .field input[type=text],.field textarea{
+    width:100%;background:rgba(255,255,255,.06);border:1px solid var(--glass-border);border-radius:10px;
+    padding:10px 12px;color:var(--paper);font-family:var(--font-body);font-size:14px;
+  }
+  .field textarea{resize:vertical;font-size:13px;}
+  .field input[type=text]:focus,.field textarea:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  .city-results{margin-top:8px;display:flex;flex-direction:column;}
+  .city-result{
+    text-align:left;background:rgba(255,255,255,.05);border:1px solid transparent;border-radius:8px;
+    padding:8px 10px;color:var(--paper);font-size:13px;cursor:pointer;font-family:var(--font-body);
+  }
+  .city-result:hover,.city-result:focus{border-color:var(--accent);}
+  .city-current{font-size:13px;color:var(--mute);margin-top:6px;}
+
+  .toggle-row{display:flex;}
+  .toggle-btn{
+    flex:1;padding:9px 0;border-radius:9px;border:1px solid var(--glass-border);
+    background:rgba(255,255,255,.05);color:var(--mute);font-family:var(--font-body);font-size:13px;cursor:pointer;
+  }
+  .toggle-btn.active{background:var(--accent);color:#1a1203;border-color:var(--accent);font-weight:600;}
+
+  .list-rows{display:flex;flex-direction:column;margin-bottom:10px;}
+  .list-row{
+    display:flex;align-items:center;background:rgba(255,255,255,.05);
+    border:1px solid var(--glass-border);border-radius:10px;padding:8px 10px;
+  }
+  .list-row input[type=text]{
+    background:transparent;border:none;color:var(--paper);font-size:13px;font-family:var(--font-body);
+    min-width:0;flex:1;padding:2px;
+  }
+  .list-row input[type=text]:focus{outline:none;}
+  .list-row .agenda-time-input{flex:none;width:64px;}
+  .row-remove{
+    flex:none;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.08);border:none;
+    color:var(--mute);cursor:pointer;font-size:14px;line-height:1;
+  }
+  .row-remove:hover{color:var(--paper);background:rgba(255,255,255,.16);}
+
+  .add-btn{
+    width:100%;padding:9px 0;border-radius:9px;border:1px dashed var(--glass-border);background:transparent;
+    color:var(--mute);font-family:var(--font-body);font-size:13px;cursor:pointer;margin-bottom:4px;
+  }
+  .add-btn:hover{color:var(--paper);border-color:var(--paper);}
+
+  .modal-actions{display:flex;justify-content:flex-end;margin-top:22px;}
+  .btn{padding:10px 18px;border-radius:10px;font-family:var(--font-body);font-size:13px;font-weight:600;cursor:pointer;border:none;}
+  .btn-ghost{background:rgba(255,255,255,.07);color:var(--paper);}
+  .btn-ghost:hover{background:rgba(255,255,255,.13);}
+  .btn-primary{background:var(--accent);color:#1a1203;}
+  .btn-primary:hover{filter:brightness(1.08);}
+  .btn-row{display:flex;flex-wrap:wrap;}
+  a.btn{display:inline-block;text-decoration:none;text-align:center;}
+
+  @media (max-width:520px){
+    .bottom-row{flex-direction:column;align-items:flex-start;}
+    .agenda{max-width:100%;width:100%;}
+    .weather-sub{display:none;}
+    .page-chevron{display:none;}
+  }
+
+  /* ===== compat for old WebView (Chromium 74): no flex gap / inset / clamp / min / max / aspect-ratio ===== */
+  .top-row > * + *{margin-left:14px;}
+  .weather > svg{margin-right:12px;}
+  .bottom-row > * + *{margin-left:16px;}
+  .agenda-item + .agenda-item{margin-top:9px;}
+  .agenda-time{margin-right:10px;}
+  .page-dot + .page-dot{margin-left:8px;}
+  .sub-screen > * + *{margin-top:20px;}
+  .wx-now > svg{margin-right:20px;}
+  .wx-hour + .wx-hour{margin-left:10px;}
+  .wx-day-row + .wx-day-row{margin-top:2px;}
+  .wx-day-name{margin-right:14px;}
+  .wx-day-row svg{margin-right:14px;}
+  .city-result + .city-result{margin-top:4px;}
+  .toggle-btn + .toggle-btn{margin-left:8px;}
+  .list-row + .list-row{margin-top:8px;}
+  .list-row > * + *{margin-left:8px;}
+  .modal-actions > * + *{margin-left:10px;}
+  .btn-row > *{margin:0 10px 10px 0;}
+  button.btn{font-family:var(--font-body);}
+  .btn:focus,.toggle-btn:focus,.add-btn:focus,.row-remove:focus,.city-result:focus,.icon-btn:focus,.page-chevron:focus{outline:3px solid var(--accent);outline-offset:2px;}
+  @media (max-width:520px){ .bottom-row > * + *{margin-left:0;margin-top:16px;} }
+  @media (max-width:466px){ .time{font-size:56px;} }
+  @media (min-width:1067px){ .time{font-size:128px;} }
+  @media (max-width:625px){ .date{font-size:15px;} }
+  @media (min-width:834px){ .date{font-size:20px;} }
+  @media (max-width:739px){ .agenda{max-width:46vw;} }
+  @media (min-height:791px){ .modal{max-height:680px;} }
+
+  /* ===== adaptive contrast zones (replace the old fixed scrim) ===== */
+  .zone{position:fixed;pointer-events:none;}
+  .zone::before,.zone::after{content:'';position:absolute;top:0;right:0;bottom:0;left:0;transition:opacity 2.2s ease;}
+  .zone::after{opacity:0;}
+  .zone.tone-dark::before{opacity:0;}
+  .zone.tone-dark::after{opacity:1;}
+  #zoneBL{left:0;bottom:0;width:56%;height:50%;-webkit-mask-image:linear-gradient(to right,#000 60%,transparent 100%);mask-image:linear-gradient(to right,#000 60%,transparent 100%);}
+  #zoneBR{right:0;bottom:0;width:46%;height:50%;-webkit-mask-image:linear-gradient(to left,#000 60%,transparent 100%);mask-image:linear-gradient(to left,#000 60%,transparent 100%);}
+  #zoneTR{right:0;top:0;width:52%;height:42%;-webkit-mask-image:linear-gradient(to left,#000 60%,transparent 100%);mask-image:linear-gradient(to left,#000 60%,transparent 100%);}
+  #zoneBL::before,#zoneBR::before{background:linear-gradient(to top,rgba(0,0,0,.62) 0%,rgba(0,0,0,.18) 48%,rgba(0,0,0,0) 100%);}
+  #zoneBL::after,#zoneBR::after{background:linear-gradient(to top,rgba(255,255,255,.52) 0%,rgba(255,255,255,.16) 48%,rgba(255,255,255,0) 100%);}
+  #zoneTR::before{background:linear-gradient(to bottom,rgba(0,0,0,.5) 0%,rgba(0,0,0,0) 100%);}
+  #zoneTR::after{background:linear-gradient(to bottom,rgba(255,255,255,.5) 0%,rgba(255,255,255,0) 100%);}
+
+  .clock-block,.weather,.icon-btn,.agenda{color:var(--paper);transition:color 2.2s ease, background-color 2.2s ease, border-color 2.2s ease;}
+  .clock-block *,.weather *,.icon-btn *,.agenda *{transition:color 2.2s ease;}
+  .tone-dark{--paper:#14161a;--mute:rgba(20,22,26,.7);--accent:#98530a;--glass:rgba(255,255,255,.62);--glass-border:rgba(20,22,26,.14);}
+  .clock-block.tone-dark .time{text-shadow:0 2px 26px rgba(255,255,255,.55);}
+
+  /* ===== home card: birthdays + upcoming ===== */
+  .agenda{max-width:400px;}
+  .agenda-head{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);margin:0 0 7px;}
+  .agenda-list-block + .agenda-list-block{margin-top:13px;}
+  .agenda-item .agenda-time{width:auto;min-width:78px;margin-right:12px;white-space:nowrap;}
+
+  /* ===== calendar screen (own view, fed by the .ics link) ===== */
+  .cal-view{flex:1;min-height:0;display:flex;margin-top:18px;}
+  .cal-view[hidden]{display:none!important;}
+  .cal-month{flex:none;width:430px;margin-right:28px;}
+  .cal-month-title{font-family:var(--font-display);font-weight:800;font-size:22px;margin-bottom:12px;}
+  .cal-grid{display:flex;flex-wrap:wrap;}
+  .cal-dow,.cal-day{width:14.2857%;text-align:center;}
+  .cal-dow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);padding-bottom:8px;}
+  .cal-day{height:54px;font-size:16px;font-variant-numeric:tabular-nums;position:relative;padding-top:9px;color:var(--paper);}
+  .cal-day.other{color:var(--mute);opacity:.45;}
+  .cal-day.today span{display:inline-block;min-width:32px;height:32px;line-height:32px;border-radius:16px;background:var(--accent);color:#14161a;font-weight:700;}
+  .cal-day .dot{position:absolute;left:50%;bottom:7px;width:5px;height:5px;margin-left:-2px;border-radius:50%;background:var(--accent);}
+  .cal-day .dot.bday{background:#f06a8a;}
+  .cal-agenda{flex:1;min-width:0;overflow-y:auto;}
+  .cal-day-head{font-family:var(--font-display);font-weight:700;font-size:15px;margin:0 0 6px;color:var(--accent);}
+  .cal-event{display:flex;align-items:baseline;font-size:16px;padding:3px 0;}
+  .cal-event-time{flex:none;width:96px;color:var(--mute);font-variant-numeric:tabular-nums;font-size:14px;}
+  .cal-event-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .cal-day-block{margin-bottom:16px;}
+  .cal-none{color:var(--mute);font-size:15px;}
+</style>
+<style id="glass2">
+/* ===== Glass v2: liquid-glass look, static (no refraction, no animation) ===== */
+:root{
+  --glass-tint:rgba(22,24,32,.34);
+  --glass-hi:rgba(255,255,255,.55);
+  --glass-rim-a:rgba(255,255,255,.80);
+  --glass-rim-b:rgba(255,255,255,.10);
+  --glass-shadow:rgba(0,0,0,.34);
+  --glass-sub:rgba(255,255,255,.075);   /* sub-screen cards: no blur, sits on the ambient gradient */
+  --mute:rgba(247,243,234,.70);
+}
+.tone-dark{
+  --glass-tint:rgba(255,255,255,.44);
+  --glass-hi:rgba(255,255,255,.95);
+  --glass-rim-a:rgba(255,255,255,.98);
+  --glass-rim-b:rgba(255,255,255,.40);
+  --glass-shadow:rgba(20,24,40,.20);
+  --glass:rgba(255,255,255,.44);
+  --mute:rgba(20,22,26,.72);
+}
+
+/* ---- shared glass surface ---- */
+.glass-card{
+  position:relative;
+  border:0;
+  border-radius:36px;
+  background-color:var(--glass-tint);
+  background-image:linear-gradient(118deg,rgba(255,255,255,.20) 0%,rgba(255,255,255,0) 36%);
+  -webkit-backdrop-filter:blur(22px) saturate(1.7); backdrop-filter:blur(22px) saturate(1.7);
+  box-shadow:
+    inset 0 1px 0 var(--glass-hi),
+    inset 0 -1px 0 rgba(255,255,255,.10),
+    inset 0 26px 34px -28px rgba(255,255,255,.38),
+    inset 0 -26px 34px -32px rgba(255,255,255,.20),
+    0 22px 56px -14px var(--glass-shadow),
+    0 2px 8px rgba(0,0,0,.10);
+}
+/* gradient rim light (brighter top-left and bottom-right, like a lit glass edge) */
+@supports ((-webkit-mask-composite:xor) or (mask-composite:exclude)){
+  .glass-card::before,.sub-card::before{
+    content:'';position:absolute;top:0;right:0;bottom:0;left:0;border-radius:inherit;padding:1.5px;pointer-events:none;
+    background:linear-gradient(140deg,var(--glass-rim-a) 0%,var(--glass-rim-b) 28%,rgba(255,255,255,.03) 58%,var(--glass-rim-b) 84%,rgba(255,255,255,.5) 100%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor; mask-composite:exclude;
+  }
+}
+
+/* ---- home screen ---- */
+.layer{padding:40px 48px 44px 48px;}
+.weather{padding:16px 30px 16px 24px;border-radius:44px;}
+.weather > svg{width:58px;height:58px;margin-right:18px;}
+.weather-temp{font-size:48px;font-weight:700;letter-spacing:-.02em;}
+.weather-sub{font-size:17px;margin-top:2px;}
+.icon-btn{width:64px;height:64px;opacity:.9;}
+.icon-btn svg{width:28px;height:28px;}
+.top-row > * + *{margin-left:16px;}
+.top-row{align-items:flex-start;}
+
+.time{font-size:176px;font-weight:700;letter-spacing:-.04em;text-shadow:0 4px 40px rgba(0,0,0,.30);}
+.time .ampm{font-size:.28em;margin-left:14px;font-weight:600;letter-spacing:0;}
+.date{font-size:34px;font-weight:600;margin-top:8px;letter-spacing:-.01em;}
+.clock-block{padding-left:6px;}
+
+.agenda{min-width:470px;max-width:520px;padding:26px 32px 28px 32px;border-radius:40px;}
+.agenda-head{font-size:15px;font-weight:700;letter-spacing:.14em;margin:0 0 12px;color:var(--mute);display:flex;align-items:center;}
+.agenda-head::before{content:'';width:9px;height:9px;border-radius:50%;background:var(--accent);margin-right:10px;flex:none;}
+.agenda-list-block.bday .agenda-head::before{background:#ff7a9c;}
+.agenda-list-block + .agenda-list-block{margin-top:18px;}
+.agenda-item{font-size:20px;line-height:1.25;}
+.agenda-item + .agenda-item{margin-top:8px;}
+.agenda-item .agenda-time{font-size:17px;font-weight:700;min-width:136px;margin-right:12px;}
+.agenda-label{font-weight:500;}
+
+/* page dots in a small glass capsule */
+.page-dots{bottom:20px;padding:10px 16px;border-radius:22px;background:rgba(20,22,30,.40);
+  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);box-shadow:inset 0 1px 0 rgba(255,255,255,.35);}
+.page-dot{width:8px;height:8px;background:rgba(255,255,255,.45);}
+.page-dot.active{width:24px;background:#fff;}
+
+/* ---- sub-screens: ambient gradient wallpaper + glass cards (no live blur here) ---- */
+.sub-screen{
+  padding:56px 72px 96px 72px;
+  background:
+    radial-gradient(1000px 700px at 12% 8%,rgba(232,163,61,.30),rgba(232,163,61,0) 62%),
+    radial-gradient(1200px 900px at 92% 96%,rgba(86,116,255,.26),rgba(86,116,255,0) 62%),
+    radial-gradient(900px 700px at 78% 8%,rgba(240,106,138,.16),rgba(240,106,138,0) 62%),
+    #0b0c11;
+}
+.sub-title{font-size:46px;font-weight:800;letter-spacing:-.03em;}
+.sub-screen > * + *{margin-top:28px;}
+
+.sub-card,.wx-now,.wx-hourly,.wx-daily,.cal-month,.cal-day-block{
+  position:relative;
+  border-radius:40px;
+  background-color:var(--glass-sub);
+  background-image:linear-gradient(118deg,rgba(255,255,255,.10) 0%,rgba(255,255,255,0) 40%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.45),
+    inset 0 -1px 0 rgba(255,255,255,.08),
+    inset 0 26px 34px -30px rgba(255,255,255,.30),
+    0 24px 60px -18px rgba(0,0,0,.55);
+}
+@supports ((-webkit-mask-composite:xor) or (mask-composite:exclude)){
+  .wx-now::before,.wx-hourly::before,.wx-daily::before,.cal-month::before,.cal-day-block::before{
+    content:'';position:absolute;top:0;right:0;bottom:0;left:0;border-radius:inherit;padding:1.5px;pointer-events:none;
+    background:linear-gradient(140deg,rgba(255,255,255,.55) 0%,rgba(255,255,255,.08) 28%,rgba(255,255,255,.02) 58%,rgba(255,255,255,.10) 84%,rgba(255,255,255,.34) 100%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor; mask-composite:exclude;
+  }
+}
+
+/* weather screen: hero card left, hourly + daily right */
+[data-screen="weather"] .sub-screen{display:grid;grid-template-columns:620px 1fr;grid-template-rows:auto auto 1fr;column-gap:32px;row-gap:28px;}
+[data-screen="weather"] .sub-screen > *{margin-top:0;}
+[data-screen="weather"] .sub-title{grid-column:1 / 3;}
+.wx-now{grid-column:1;grid-row:2 / 4;flex-direction:column;align-items:flex-start;justify-content:center;padding:48px 52px;}
+.wx-now > svg{width:150px;height:150px;margin:0 0 20px 0;}
+.wx-now-temp{font-size:200px;line-height:1;font-weight:700;letter-spacing:-.05em;}
+.wx-now-sub{font-size:24px;line-height:1.5;margin-top:14px;max-width:480px;}
+.wx-hourly{grid-column:2;grid-row:2;display:flex;overflow:hidden;padding:22px 24px;}
+.wx-hourly .wx-hour.glass-card,.wx-day-row.glass-card{
+  -webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none;background:none;border-radius:20px;
+}
+.wx-hourly .wx-hour.glass-card::before,.wx-day-row.glass-card::before{display:none;}
+.wx-hour{flex:1;width:auto;padding:12px 0;}
+.wx-hour + .wx-hour{margin-left:0;}
+.wx-hour svg{width:38px;height:38px;margin:10px 0;}
+.wx-hour-label{font-size:17px;font-weight:500;}
+.wx-hour-temp{font-size:24px;font-weight:700;}
+.wx-hourly .wx-hour:first-child{background:rgba(255,255,255,.12);box-shadow:inset 0 1px 0 rgba(255,255,255,.35);}
+.wx-daily{grid-column:2;grid-row:3;padding:14px 34px;display:flex;flex-direction:column;justify-content:space-between;}
+.wx-day-row.glass-card{padding:0;flex:1;align-items:center;border-radius:0;}
+.wx-day-row + .wx-day-row{margin-top:0;border-top:1px solid rgba(255,255,255,.10);}
+.wx-day-name{width:150px;font-size:26px;font-weight:600;}
+.wx-day-row svg{width:38px;height:38px;margin-right:20px;}
+.wx-day-range{font-size:26px;}
+
+/* calendar screen: month card + two-column agenda cards */
+.cal-view{margin-top:28px;}
+.cal-month{width:620px;margin-right:32px;padding:34px 38px 26px 38px;align-self:flex-start;}
+.cal-month-title{font-size:34px;font-weight:800;letter-spacing:-.02em;margin-bottom:18px;}
+.cal-dow{font-size:15px;font-weight:700;padding-bottom:12px;}
+.cal-day{height:76px;font-size:25px;padding-top:12px;font-weight:500;}
+.cal-day.today span{min-width:44px;height:44px;line-height:44px;border-radius:22px;box-shadow:0 6px 18px rgba(232,163,61,.45);}
+.cal-day .dot{bottom:9px;width:7px;height:7px;margin-left:-3px;}
+.cal-agenda{display:grid;grid-template-columns:1fr 1fr;column-gap:22px;row-gap:22px;align-content:start;grid-auto-rows:min-content;overflow:hidden;}
+.cal-agenda > .cal-day-block:nth-child(n+9){display:none;}
+.cal-day-block{margin-bottom:0;padding:24px 30px 20px 30px;border-radius:34px;}
+.cal-day-head{font-size:20px;font-weight:800;margin-bottom:10px;}
+.cal-event{font-size:22px;padding:5px 0;}
+.cal-event-time{width:116px;font-size:18px;}
+
+/* ---- headlines card (home, top-left) ---- */
+#zoneTL{left:0;top:0;width:52%;height:46%;-webkit-mask-image:linear-gradient(to right,#000 60%,transparent 100%);mask-image:linear-gradient(to right,#000 60%,transparent 100%);}
+#zoneTL::before{background:linear-gradient(to bottom,rgba(0,0,0,.5) 0%,rgba(0,0,0,0) 100%);}
+#zoneTL::after{background:linear-gradient(to bottom,rgba(255,255,255,.5) 0%,rgba(255,255,255,0) 100%);}
+.news{position:absolute;left:48px;top:40px;margin:0;width:650px;padding:26px 34px 28px 34px;border-radius:40px;color:var(--paper);transition:color 2.2s ease, background-color 2.2s ease;}
+.news *{transition:color 2.2s ease;}
+.news[hidden]{display:none!important;}
+.news-title{font-size:15px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin:0 0 14px;display:flex;align-items:center;}
+.news-title::before{content:'';width:9px;height:9px;border-radius:50%;background:var(--accent);margin-right:10px;flex:none;}
+.news-list{list-style:none;margin:0;padding:0;transition:opacity .55s ease;}
+.news-list.fade{opacity:0;}
+.news-list li{position:relative;padding-left:22px;font-size:20px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.news-list li::before{content:'';position:absolute;left:2px;top:.55em;width:7px;height:7px;border-radius:50%;background:var(--accent);}
+.news-list li + li{margin-top:15px;}
+.n-src{font-weight:800;margin-right:2px;}
+.n-sum{opacity:.9;}
+
+/* ---- grouped corner card: Today / Next week / Later this month ---- */
+.agenda-sub{font-size:17px;font-weight:700;margin:11px 0 6px;letter-spacing:.01em;}
+.agenda-head + .agenda-sub{margin-top:2px;}
+.agenda-item{position:relative;padding-left:20px;}
+.agenda-item::before{content:'';position:absolute;left:3px;top:.62em;width:6px;height:6px;border-radius:50%;background:var(--mute);opacity:.8;}
+.agenda-item.no-time .agenda-time{display:none;}
+
+</style>
+<script>(function(){try{var d=window.devicePixelRatio||1;if(d>1.15&&d<3&&window.innerWidth<1700){document.documentElement.style.zoom=String(1/d);}}catch(e){}})();</script>
+<style id="album-css">
+/* ---- shared-album slideshow bits ---- */
+.photo.pt > i{position:absolute;top:0;right:0;bottom:0;left:0;background-repeat:no-repeat;}
+.photo.pt > .pt-bg{background-size:cover;background-position:center;-webkit-filter:blur(38px) brightness(.72) saturate(1.1);filter:blur(38px) brightness(.72) saturate(1.1);-webkit-transform:scale(1.18);transform:scale(1.18);}
+.photo.pt > .pt-fg{background-size:contain;background-position:center;}
+.caption-pill{position:fixed;left:50%;bottom:96px;-webkit-transform:translateX(-50%);transform:translateX(-50%);max-width:800px;min-width:240px;padding:16px 32px 17px;border-radius:32px;text-align:center;color:var(--paper);pointer-events:none;transition:opacity .45s ease, color 2.2s ease, background-color 2.2s ease;}
+.caption-pill[hidden]{display:none!important;}
+.caption-pill.swap{opacity:0;}
+.cap-title{font-family:var(--font-display);font-weight:700;font-size:28px;line-height:1.2;}
+.cap-sub{margin-top:4px;font-size:19px;font-weight:500;color:var(--mute);}
+.cap-sub:empty{display:none;}
+
+/* ---- fit to the panel: tighter margins, smaller Headlines card ---- */
+.layer{padding:24px 26px 26px 26px;}
+.news{left:26px;top:24px;width:570px;padding:22px 28px 24px 28px;border-radius:36px;}
+.news-title{font-size:14px;margin-bottom:12px;}
+.news-list li{font-size:18px;line-height:1.28;padding-left:20px;}
+.news-list li + li{margin-top:12px;}
+.news-list li::before{top:.52em;width:6px;height:6px;}
+.agenda{border-radius:36px;}
+.caption-pill{bottom:70px;}
+</style>
+</head>
+<body>
+
+<div class="screens" id="screens">
+
+  <!-- HOME -->
+  <section class="screen active" data-screen="home">
+    <div class="stage" id="stage"></div>
+    <div class="zone" id="zoneTL"></div><div class="zone" id="zoneBL"></div><div class="zone" id="zoneBR"></div><div class="zone" id="zoneTR"></div>
+    <div class="caption-pill glass-card" id="captionPill" hidden><div class="cap-title" id="capTitle"></div><div class="cap-sub" id="capSub"></div></div>
+    <div class="layer">
+      <div class="top-row">
+        <div class="news glass-card" id="newsCard" hidden>
+          <div class="news-title">Headlines</div>
+          <ul class="news-list" id="newsList"></ul>
+        </div>
+        <div class="weather glass-card" id="weatherCard">
+          <svg id="weatherIcon" viewBox="0 0 24 24" fill="none"></svg>
+          <div class="weather-readout">
+            <span class="weather-temp" id="weatherTemp">--°</span>
+            <span class="weather-sub" id="weatherSub">Loading weather…</span>
+          </div>
+        </div>
+        <button class="icon-btn glass-card" id="gearBtn" aria-label="Settings" title="Settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="bottom-row">
+        <div class="clock-block">
+          <div class="time" id="timeDisplay">--:--</div>
+          <div class="date" id="dateDisplay">—</div>
+        </div>
+        <div class="agenda glass-card">
+          <div class="agenda-title" id="agendaTitle">Quick notes</div>
+          <div class="agenda-list" id="agendaList"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WEATHER -->
+  <section class="screen" data-screen="weather">
+    <div class="sub-screen">
+      <div class="sub-title">Weather</div>
+      <div class="wx-now">
+        <svg id="wxNowIcon" viewBox="0 0 24 24" fill="none"></svg>
+        <div>
+          <div class="wx-now-temp" id="wxNowTemp">--°</div>
+          <div class="wx-now-sub" id="wxNowSub">Loading…</div>
+        </div>
+      </div>
+      <div class="wx-hourly" id="wxHourly"></div>
+      <div class="wx-daily" id="wxDaily"></div>
+    </div>
+  </section>
+
+  <!-- CALENDAR -->
+  <section class="screen" data-screen="calendar">
+    <div class="sub-screen">
+      <div class="sub-title">Calendar</div>
+      <div id="calEmpty" class="empty-hint" hidden>
+        No calendar connected yet. Share an iPhone calendar as a Public Calendar and give the link to the frame (or paste it in Settings).
+      </div>
+      <div class="cal-frame-wrap" id="calFrameWrap"></div>
+      <div class="cal-view" id="calView" hidden><div class="cal-month" id="calMonth"></div><div class="cal-agenda" id="calAgenda"></div></div>
+    </div>
+  </section>
+
+  <!-- PHOTOS -->
+  <section class="screen" data-screen="photos">
+    <div class="sub-screen">
+      <div class="sub-title">Photos</div>
+      <div class="photo-grid" id="photoGrid"></div>
+    </div>
+  </section>
+
+</div>
+
+<button class="page-chevron" id="prevPage" aria-label="Previous screen">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+</button>
+<button class="page-chevron" id="nextPage" aria-label="Next screen">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+</button>
+<div class="page-dots" id="pageDots"></div>
+
+<div class="lightbox" id="lightbox" hidden>
+  <button class="icon-btn glass-card lightbox-close" id="lightboxClose" aria-label="Close">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  </button>
+  <img id="lightboxImg" src="" alt="">
+</div>
+
+<div class="modal-overlay" id="modalOverlay" hidden>
+  <div class="modal">
+    <h2>Display settings</h2>
+    <p class="modal-section-note">Switch screens with the remote's left/right D-pad. Up/Down moves between items here; OK selects; Back closes.</p>
+
+    <div class="field">
+      <label for="citySearch">Weather location</label>
+      <input type="text" id="citySearch" placeholder="Search a city…">
+      <div class="city-results" id="cityResults"></div>
+      <div class="city-current" id="cityCurrent"></div>
+      <div class="hint">Leave this and the display will try to use the frame's own location automatically.</div>
+    </div>
+
+    <div class="field">
+      <label>Clock format</label>
+      <div class="toggle-row">
+        <button class="toggle-btn" id="fmt12" type="button">12-hour</button>
+        <button class="toggle-btn" id="fmt24" type="button">24-hour</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="calendarId">Calendar link</label>
+      <input type="text" id="calendarId" placeholder="webcal://… (iPhone) or a Google Calendar ID">
+      <div class="hint">iPhone: Calendar app, tap the (i) next to the shared calendar, turn on Public Calendar, Share Link, then paste it. A Google Calendar ID also works.</div>
+    </div>
+
+    <div class="field">
+      <label for="photosAlbumUrl">Google Photos shared album link</label>
+      <input type="text" id="photosAlbumUrl" placeholder="https://photos.app.goo.gl/…">
+      <div class="hint">Share an album with "Anyone with the link can view," then paste that link here. This reads the album's public page, so it can occasionally stop working if Google changes that page — if photos stop updating, let me know and I'll adjust it.</div>
+    </div>
+
+    <div class="field">
+      <label>Quick notes (shown on the home screen corner card)</label>
+      <div class="list-rows" id="agendaRows"></div>
+      <button class="add-btn" id="addAgenda" type="button">+ Add item</button>
+    </div>
+
+    <div class="field">
+      <label>Fallback photos (used only if no album link above, one URL per line)</label>
+      <textarea id="photoUrls" rows="3"></textarea>
+    </div>
+
+    <div class="field">
+      <label>Frame network &amp; settings</label>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="wifiBtn" type="button">Open Wi-Fi settings</button>
+        <button class="btn btn-ghost" id="androidSettingsBtn" type="button">Open Android settings</button>
+      </div>
+      <div class="hint">In the Frame Hub app, the remote's Settings button also opens Wi-Fi settings directly from any screen.</div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="cancelBtn" type="button">Cancel</button>
+      <button class="btn btn-primary" id="saveBtn" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var DEFAULTS = {
+    lat: 29.914, lon: -90.055, city: 'Gretna, LA', cityIsAuto: true,
+    clockFormat: '12',
+    calendarId: '',
+    photosAlbumUrl: '',
+    photos: [
+      'https://picsum.photos/id/1018/1920/1080',
+      'https://picsum.photos/id/1015/1920/1080',
+      'https://picsum.photos/id/1043/1920/1080',
+      'https://picsum.photos/id/1050/1920/1080',
+      'https://picsum.photos/id/1016/1920/1080'
+    ],
+    agenda: [
+      {time:'9:00 AM', label:'Example — Team standup'},
+      {time:'1:00 PM', label:'Example — Pick up groceries'},
+      {time:'6:30 PM', label:'Example — Dinner with family'}
+    ]
+  };
+
+  function loadState(){
+    try{
+      var raw = localStorage.getItem('frameHubState');
+      if(!raw) return JSON.parse(JSON.stringify(DEFAULTS));
+      var parsed = JSON.parse(raw);
+      return Object.assign(JSON.parse(JSON.stringify(DEFAULTS)), parsed);
+    }catch(e){ return JSON.parse(JSON.stringify(DEFAULTS)); }
+  }
+  function saveState(s){ try{ localStorage.setItem('frameHubState', JSON.stringify(s)); }catch(e){} }
+
+  var state = loadState();
+
+  /* ================= screen paging ================= */
+  var SCREEN_ORDER = ['home','weather','calendar','photos'];
+  var screenEls = {};
+  document.querySelectorAll('.screen').forEach(function(el){ screenEls[el.getAttribute('data-screen')] = el; });
+  var pageDotsEl = document.getElementById('pageDots');
+  SCREEN_ORDER.forEach(function(name, i){
+    var d = document.createElement('div');
+    d.className = 'page-dot' + (i === 0 ? ' active' : '');
+    d.addEventListener('click', function(){ goToScreen(i); });
+    pageDotsEl.appendChild(d);
+  });
+  var currentScreen = 0;
+
+  function goToScreen(idx){
+    idx = ((idx % SCREEN_ORDER.length) + SCREEN_ORDER.length) % SCREEN_ORDER.length;
+    currentScreen = idx;
+    SCREEN_ORDER.forEach(function(name, i){
+      screenEls[name].classList.toggle('active', i === idx);
+    });
+    Array.prototype.forEach.call(pageDotsEl.children, function(dot, i){
+      dot.classList.toggle('active', i === idx);
+    });
+    if(SCREEN_ORDER[idx] === 'calendar') ensureCalendarFrame();
+    if(SCREEN_ORDER[idx] === 'photos') renderPhotoGrid();
+  }
+  document.getElementById('prevPage').addEventListener('click', function(){ goToScreen(currentScreen - 1); });
+  document.getElementById('nextPage').addEventListener('click', function(){ goToScreen(currentScreen + 1); });
+
+  /* swipe support for touch */
+  (function(){
+    var startX = null, startY = null;
+    document.addEventListener('touchstart', function(e){
+      if(!overlay.hidden || !lightbox.hidden) return;
+      var t = e.touches[0]; startX = t.clientX; startY = t.clientY;
+    }, {passive:true});
+    document.addEventListener('touchend', function(e){
+      if(startX === null) return;
+      var t = e.changedTouches[0];
+      var dx = t.clientX - startX, dy = t.clientY - startY;
+      if(Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)*1.5){
+        if(dx < 0) goToScreen(currentScreen + 1); else goToScreen(currentScreen - 1);
+      }
+      startX = null; startY = null;
+    }, {passive:true});
+  })();
+
+  /* ================= clock ================= */
+  var timeEl = document.getElementById('timeDisplay');
+  var dateEl = document.getElementById('dateDisplay');
+  function pad(n){ return n < 10 ? '0'+n : ''+n; }
+  function renderClock(){
+    var now = new Date();
+    var h = now.getHours(), m = now.getMinutes();
+    var html;
+    if(state.clockFormat === '24'){
+      html = pad(h) + ':' + pad(m);
+    } else {
+      var ampm = h >= 12 ? 'PM' : 'AM';
+      var h12 = h % 12; if(h12 === 0) h12 = 12;
+      html = h12 + ':' + pad(m) + '<span class="ampm">' + ampm + '</span>';
+    }
+    timeEl.innerHTML = html;
+    dateEl.textContent = now.toLocaleDateString(undefined, {weekday:'long', month:'long', day:'numeric'});
+  }
+  renderClock();
+  setInterval(function(){ if(new Date().getSeconds() === 0) renderClock(); }, 1000);
+  setInterval(renderClock, 1000*15);
+
+
+  /* ================= adaptive contrast: pick light or dark text per screen corner from the photo ================= */
+  var toneEls = {
+    tl: [document.getElementById('newsCard')],
+    cap: [document.getElementById('captionPill')],
+    bl: [document.querySelector('.clock-block')],
+    br: [document.querySelector('.agenda')],
+    tr: [document.getElementById('weatherCard'), document.getElementById('gearBtn')]
+  };
+  var zoneEls = { tl: document.getElementById('zoneTL'), bl: document.getElementById('zoneBL'), br: document.getElementById('zoneBR'), tr: document.getElementById('zoneTR') };
+  var toneNow = { cap:'light', tl:'light', bl:'light', br:'light', tr:'light' };   /* 'light' = light text (default), 'dark' = dark text for bright photos */
+  var toneCache = {}, toneReq = 0;
+  function setTone(zone, tone){
+    toneNow[zone] = tone;
+    var dark = tone === 'dark';
+    toneEls[zone].forEach(function(el){ if(el) el.classList.toggle('tone-dark', dark); });
+    if(zoneEls[zone]) zoneEls[zone].classList.toggle('tone-dark', dark);
+  }
+  function unionRect(els){
+    var l=1e9,t=1e9,r=-1e9,b=-1e9;
+    els.forEach(function(el){ if(!el) return; var q = el.getBoundingClientRect(); if(q.width<1) return;
+      l=Math.min(l,q.left); t=Math.min(t,q.top); r=Math.max(r,q.right); b=Math.max(b,q.bottom); });
+    if(l>r) return null;
+    return {left:l-24, top:t-24, right:r+24, bottom:b+24};
+  }
+  function analyzeImage(url){
+    return new Promise(function(resolve){
+      var img = new Image(); img.crossOrigin = 'anonymous';
+      img.onload = function(){
+        try{
+          var W = 192, H = Math.max(8, Math.round(192 * img.naturalHeight / img.naturalWidth));
+          var c = document.createElement('canvas'); c.width = W; c.height = H;
+          var g = c.getContext('2d'); g.drawImage(img, 0, 0, W, H);
+          var portrait = img.naturalHeight > img.naturalWidth * 1.05, pm = 0.3;
+          if(portrait){ var ad = g.getImageData(0, 0, W, H).data, as = 0, an = 0; for(var j=0;j<ad.length;j+=4){ as += 0.2126*ad[j] + 0.7152*ad[j+1] + 0.0722*ad[j+2]; an++; } pm = an ? as/an/255*0.8 : 0.3; }
+          var vw = window.innerWidth, vh = window.innerHeight;
+          var sc = Math.max(vw*1.06/img.naturalWidth, vh*1.06/img.naturalHeight);
+          var dw = img.naturalWidth*sc, dh = img.naturalHeight*sc, ox = (vw-dw)/2, oy = (vh-dh)/2;
+          function cl(v){ return Math.max(0, Math.min(1, v)); }
+          var out = {};
+          Object.keys(toneEls).forEach(function(z){
+            var r = unionRect(toneEls[z]); if(!r) return;
+            var x0 = Math.floor(cl((r.left-ox)/dw)*W), x1 = Math.ceil(cl((r.right-ox)/dw)*W);
+            var y0 = Math.floor(cl((r.top-oy)/dh)*H),  y1 = Math.ceil(cl((r.bottom-oy)/dh)*H);
+            var w = Math.max(1, x1-x0), h = Math.max(1, y1-y0);
+            var d = g.getImageData(x0, y0, w, h).data, sum = 0, cnt = 0;
+            for(var i=0;i<d.length;i+=4){ sum += 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2]; cnt++; }
+            out[z] = portrait ? pm : (cnt ? sum/cnt/255 : 0.3);
+          });
+          resolve(out);
+        }catch(e){ resolve(null); }
+      };
+      img.onerror = function(){ resolve(null); };
+      img.src = url;
+    });
+  }
+  function applyToneForUrl(url){
+    if(!url) return;
+    var my = ++toneReq;
+    var p = toneCache[url] ? Promise.resolve(toneCache[url]) : analyzeImage(url);
+    p.then(function(res){
+      if(my !== toneReq) return;           /* a newer photo already took over */
+      if(!res){ ['cap','tl','bl','br','tr'].forEach(function(z){ setTone(z,'light'); }); return; }
+      toneCache[url] = res;
+      Object.keys(res).forEach(function(z){
+        var cur = toneNow[z], lum = res[z];
+        var next = cur === 'light' ? (lum > 0.60 ? 'dark' : 'light') : (lum < 0.47 ? 'light' : 'dark');
+        if(next !== cur) setTone(z, next);
+      });
+    });
+  }
+  window.__tone = function(){ return {now: toneNow, cache: toneCache}; };
+
+  /* ================= photo slideshow (home) ================= */
+  var stage = document.getElementById('stage');
+  var photoEls = [], photoIndex = 0;
+  var albumUrls = [], albumMeta = [], albumByUrl = {};   /* filled from the iCloud shared album (parallel to photoEls) */
+  var capPill = document.getElementById('captionPill'), capTitle = document.getElementById('capTitle'), capSub = document.getElementById('capSub');
+  function activePhotoList(){
+    if(albumUrls.length) return albumUrls;
+    return (state.resolvedPhotos && state.resolvedPhotos.length) ? state.resolvedPhotos
+         : (state.photos && state.photos.length ? state.photos : DEFAULTS.photos);
+  }
+  function buildStage(){
+    stage.innerHTML = ''; photoEls = [];
+    activePhotoList().forEach(function(url){
+      var d = makeSlide(url);
+      stage.appendChild(d); photoEls.push(d);
+    });
+    photoIndex = 0;
+    if(photoEls[0]) photoEls[0].classList.add('active');
+    albumCaption(0);
+    applyToneForUrl(activePhotoList()[0]);
+  }
+  buildStage();
+  var slideTimer = null;
+  function startSlideshow(){
+    if(slideTimer) clearInterval(slideTimer);
+    if(photoEls.length < 2) return;
+    slideTimer = setInterval(function(){
+      photoEls[photoIndex].classList.remove('active');
+      photoIndex = (photoIndex + 1) % photoEls.length;
+      albumCaption(photoIndex);
+      applyToneForUrl(activePhotoList()[photoIndex]);
+      photoEls[photoIndex].classList.add('active');
+    }, 20000);
+  }
+  startSlideshow();
+
+  /* ================= photos grid + lightbox ================= */
+  var photoGrid = document.getElementById('photoGrid');
+  function renderPhotoGrid(){
+    photoGrid.innerHTML = '';
+    activePhotoList().forEach(function(url){
+      var d = document.createElement('div');
+      d.className = 'photo-thumb';
+      d.style.backgroundImage = "url('" + url.replace(/'/g, "%27") + "')";
+      d.addEventListener('click', function(){ openLightbox(url); });
+      photoGrid.appendChild(d);
+    });
+  }
+  var lightbox = document.getElementById('lightbox');
+  var lightboxImg = document.getElementById('lightboxImg');
+  function openLightbox(url){ lightboxImg.src = url; lightbox.hidden = false; }
+  function closeLightbox(){ lightbox.hidden = true; lightboxImg.src=''; }
+  document.getElementById('lightboxClose').addEventListener('click', closeLightbox);
+  lightbox.addEventListener('click', function(e){ if(e.target === lightbox) closeLightbox(); });
+
+  /* pull real photo URLs out of a public Google Photos album page via a CORS proxy.
+     best-effort: Google doesn't publish an API for this, so it's reading the public
+     page's own embedded data. if Google changes that page's structure this silently
+     falls back to the manual photo list below. */
+  function refreshGooglePhotosAlbum(){
+    var link = (state.photosAlbumUrl || '').trim();
+    if(!link){ state.resolvedPhotos = null; return Promise.resolve(); }
+    var proxied = 'https://corsproxy.io/?url=' + encodeURIComponent(link);
+    return fetch(proxied).then(function(r){ return r.text(); }).then(function(html){
+      var found = html.match(/https:\/\/lh3\.googleusercontent\.com\/[A-Za-z0-9_\-]{30,}/g) || [];
+      var uniq = Array.from(new Set(found)).slice(0, 60).map(function(u){
+        return u.replace(/=.*$/, '') + '=w1600-h900-no';
+      });
+      if(uniq.length){ state.resolvedPhotos = uniq; }
+      else { state.resolvedPhotos = null; }
+    }).catch(function(){
+      state.resolvedPhotos = null;
+    });
+  }
+
+  /* ================= iCloud shared album -> slideshow (photo, caption, date, place) ================= */
+  var album = { items: {}, err: null, last: 0, busy: false };
+  var CKP = '/database/1/com.apple.photos.cloud/production/';
+  function fv(x){ return x ? x.value : undefined; }
+  function albumKey(){
+    var v = ''; try{ if(window.FrameHubNative && FrameHubNative.getCfg) v = String(FrameHubNative.getCfg('albumUrl') || ''); }catch(e){}
+    v = v.trim(); if(!v || v === 'off') return null;
+    var m = v.match(/\/shared\/album\/([A-Za-z0-9_-]+)/i) || v.match(/^([A-Za-z0-9_-]{16,})$/);
+    return m ? m[1] : null;
+  }
+  function ckPost(url, body){
+    /* text/plain keeps this a "simple" request, so the browser doesn't need a CORS preflight */
+    return fetch(url, {method:'POST', headers:{'Content-Type':'text/plain'}, body: JSON.stringify(body)})
+      .then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+  }
+  function albumFetchRecords(key){
+    return ckPost('https://ckdatabasews.icloud.com' + CKP + 'public/records/resolve?remapEnums=true&getCurrentSyncToken=true&sharing_url_key=' + key,
+                  {shortGUIDs:[{value:key}]}).then(function(j){
+      var r = j.results && j.results[0], ap = r && r.anonymousPublicAccess;
+      if(!ap || !ap.token) throw new Error('album is not public');
+      var base = ap.databasePartition.replace(/:443$/, '') + CKP + 'shared/changes/zone?remapEnums=true&getCurrentSyncToken=true&sharing_url_key=' + key +
+                 '&publicAccessAuthToken=' + encodeURIComponent(ap.token);
+      var recs = [];
+      function page(tok, n){
+        var z = {zoneID: r.zoneID}; if(tok) z.syncToken = tok;
+        return ckPost(base, {zones:[z]}).then(function(c){
+          var zz = c.zones && c.zones[0]; if(!zz) return recs;
+          recs = recs.concat(zz.records || []);
+          if(zz.moreComing && n < 12) return page(zz.syncToken, n + 1);
+          return recs;
+        });
+      }
+      return page(null, 0);
+    });
+  }
+
+  /* minimal binary-plist reader (just enough for the photo's location blob) */
+  function bplistParse(b){
+    try{
+      if(b.length < 40 || String.fromCharCode(b[0],b[1],b[2],b[3],b[4],b[5]) !== 'bplist') return null;
+      var tr = b.length - 32, offSize = b[tr+6], refSize = b[tr+7];
+      function rd(p, n){ var v = 0; for(var i=0;i<n;i++) v = v * 256 + b[p+i]; return v; }
+      var num = rd(tr+8, 8), top = rd(tr+16, 8), tbl = rd(tr+24, 8), dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
+      function off(i){ return rd(tbl + i*offSize, offSize); }
+      function len(p, info){ if(info < 15) return {n: info, p: p+1}; var m = b[p+1], sz = 1 << (m & 15); return {n: rd(p+2, sz), p: p+2+sz}; }
+      function obj(i, depth){
+        if(depth > 6 || i >= num) return null;
+        var p = off(i), m = b[p], t = m >> 4, info = m & 15, L;
+        if(t === 1) return rd(p+1, 1 << info);
+        if(t === 2) return (1 << info) === 4 ? dv.getFloat32(p+1) : dv.getFloat64(p+1);
+        if(t === 3) return dv.getFloat64(p+1);
+        if(t === 5){ L = len(p, info); var s = ''; for(var k=0;k<L.n;k++) s += String.fromCharCode(b[L.p+k]); return s; }
+        if(t === 13){
+          L = len(p, info); var o = {};
+          for(var k2=0;k2<L.n;k2++){ var kk = obj(rd(L.p + k2*refSize, refSize), depth+1); o[kk] = obj(rd(L.p + (L.n + k2)*refSize, refSize), depth+1); }
+          return o;
+        }
+        return null;
+      }
+      return obj(top, 0);
+    }catch(e){ return null; }
+  }
+  function b64bytes(s){ var a = atob(s), u = new Uint8Array(a.length); for(var i=0;i<a.length;i++) u[i] = a.charCodeAt(i); return u; }
+
+  function albumBuild(recs){
+    var posts = {}, masters = {}, assets = [];
+    recs.forEach(function(r){
+      if(r.deleted) return;
+      var f = r.fields || {};
+      if(r.recordType === 'CPLPost') posts[r.recordName] = f;
+      else if(r.recordType === 'CPLMaster') masters[r.recordName] = f;
+      else if(r.recordType === 'CPLAsset') assets.push(f);
+    });
+    var out = [];
+    assets.forEach(function(a){
+      if(fv(a.isHidden) || fv(a.trashReason)) return;
+      var mref = a.masterRef && a.masterRef.value && a.masterRef.value.recordName, m = masters[mref];
+      if(!m) return;
+      var type = String(fv(m.itemType) || '');
+      if(/movie|video|mpeg|quicktime/i.test(type) || fv(a.duration) > 0) return;
+      var pick = null;
+      ['Full', 'Large', 'Med'].forEach(function(n){
+        if(pick) return;
+        var res = fv(m['resJPEG' + n + 'Res']);
+        if(res && res.downloadURL && (!res.size || res.size < 5e6)) pick = {url: res.downloadURL, w: fv(m['resJPEG' + n + 'Width']) || 0, h: fv(m['resJPEG' + n + 'Height']) || 0};
+      });
+      if(!pick){ var o = fv(m.resOriginalRes); if(o && o.downloadURL && /jpeg|jpg/i.test(type) && (!o.size || o.size < 5e6)) pick = {url: o.downloadURL, w: fv(m.resOriginalWidth) || 0, h: fv(m.resOriginalHeight) || 0}; }
+      if(!pick) return;
+      var post = posts[fv(a.assetBatchId)] || {}, caption = String(fv(post.caption) || '').trim();
+      var tz = fv(a.timeZoneOffset) || 0, ad = fv(a.assetDate) || fv(a.addedDate) || 0;
+      var loc = null;
+      try{ var le = fv(a.locationEnc); if(le){ var lp = bplistParse(b64bytes(le)); if(lp && isFinite(lp.lat) && isFinite(lp.lon) && (lp.lat || lp.lon)) loc = {lat: lp.lat, lon: lp.lon}; } }catch(e){}
+      out.push({id: mref, src: pick.url.replace('${f}', 'public.jpeg'), w: pick.w, h: pick.h, caption: caption, date: ad ? ad + tz * 1000 : 0, loc: loc});
+    });
+    out.sort(function(x, y){ return y.date - x.date; });
+    return out;
+  }
+
+  /* place name for a GPS point: nearest town, else the ZIP's town (so rural spots still say e.g. Pearl River, LA) */
+  var geoCache = {}; try{ geoCache = JSON.parse(localStorage.getItem('fh_geo') || '{}'); }catch(e){}
+  function geoSave(){ try{ localStorage.setItem('fh_geo', JSON.stringify(geoCache)); }catch(e){} }
+  function placeFor(lat, lon){
+    var k = lat.toFixed(3) + ',' + lon.toFixed(3);
+    if(geoCache[k] !== undefined) return Promise.resolve(geoCache[k]);
+    return fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=16&lat=' + lat.toFixed(4) + '&lon=' + lon.toFixed(4))
+      .then(function(r){ return r.json(); }).then(function(j){
+        var a = j.address || {}, st = (a['ISO3166-2-lvl4'] || '').replace(/^US-/, '');
+        var town = a.city || a.town || a.village || a.hamlet || a.suburb || a.neighbourhood;
+        var cc = (a.country_code || '').toLowerCase();
+        function done(s){ geoCache[k] = s; geoSave(); return s; }
+        if(town) return done(town + (cc === 'us' && st ? ', ' + st : (a.country ? ', ' + a.country : '')));
+        if(cc === 'us' && a.postcode){
+          return fetch('https://api.zippopotam.us/us/' + String(a.postcode).slice(0, 5)).then(function(r){ return r.json(); }).then(function(z){
+            var p = z.places && z.places[0]; if(p) return done(p['place name'] + ', ' + p['state abbreviation']);
+            return done((a.county || a.state || '') + (st && a.county ? ', ' + st : ''));
+          }).catch(function(){ return a.county || a.state || ''; });
+        }
+        return done(a.county ? a.county + (st ? ', ' + st : '') : (a.state || a.country || ''));
+      }).catch(function(){ return ''; });
+  }
+
+  /* ---- caption pill ---- */
+  var FULLMON = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var FULLWD = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  function dateText(ms, long){
+    if(!ms) return '';
+    var d = new Date(ms), yr = d.getUTCFullYear(), now = new Date().getFullYear();   /* ms already shifted to the photo's own local time */
+    return long ? FULLWD[d.getUTCDay()] + ', ' + FULLMON[d.getUTCMonth()] + ' ' + d.getUTCDate() + (yr !== now ? ', ' + yr : '')
+                : MON[d.getUTCMonth()] + ' ' + d.getUTCDate() + (yr !== now ? ', ' + yr : '');
+  }
+  var capTimer = null, capLast = '';
+  function albumCaption(i){
+    var m = albumMeta[i];
+    if(!m){ capPill.hidden = true; capLast = ''; return; }
+    var title, sub;
+    if(m.caption){ title = m.caption; sub = [m.place, dateText(m.date, false)].filter(Boolean).join('  ·  '); }
+    else { title = dateText(m.date, true); sub = m.place || ''; }
+    if(!title && !sub){ capPill.hidden = true; capLast = ''; return; }
+    var sig = title + '|' + sub;
+    if(sig === capLast && !capPill.hidden) return;
+    capLast = sig;
+    function put(){ capTitle.textContent = title; capSub.textContent = sub; capPill.hidden = false; capPill.classList.remove('swap'); }
+    if(capTimer) clearTimeout(capTimer);
+    if(capPill.hidden){ put(); return; }
+    capPill.classList.add('swap'); capTimer = setTimeout(put, 460);
+  }
+
+  /* ---- slides ---- */
+  function makeSlide(url){
+    var d = document.createElement('div'), m = albumByUrl[url], q = "url('" + url.replace(/'/g, '%27') + "')";
+    d.className = 'photo' + (m && m.portrait ? ' pt' : '');
+    if(m && m.portrait){
+      var a = document.createElement('i'), b = document.createElement('i');
+      a.className = 'pt-bg'; b.className = 'pt-fg'; a.style.backgroundImage = q; b.style.backgroundImage = q;
+      d.appendChild(a); d.appendChild(b);
+    } else d.style.backgroundImage = q;
+    return d;
+  }
+  var blobQueue = [], blobBusy = 0;
+  function loadBlob(it){
+    if(it.loading || it.blob) return;
+    it.loading = true; blobQueue.push(it); pumpBlobs();
+  }
+  function pumpBlobs(){
+    while(blobBusy < 2 && blobQueue.length){
+      (function(it){
+        blobBusy++;
+        fetch(it.src).then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); }).then(function(bl){
+          var u = URL.createObjectURL(bl), im = new Image();
+          im.onload = function(){
+            it.blob = u; it.portrait = im.naturalHeight > im.naturalWidth * 1.05; it.loading = false;
+            albumByUrl[u] = it; blobBusy--; albumApply(); pumpBlobs();
+          };
+          im.onerror = function(){ URL.revokeObjectURL(u); it.loading = false; blobBusy--; pumpBlobs(); };
+          im.src = u;
+        }).catch(function(){ it.loading = false; blobBusy--; pumpBlobs(); });
+      })(blobQueue.shift());
+    }
+  }
+  function albumApply(){
+    var ready = Object.keys(album.items).map(function(k){ return album.items[k]; }).filter(function(it){ return it.blob; });
+    ready.sort(function(x, y){ return y.date - x.date; });
+    var order = ready;
+    if(!albumUrls.length){
+      if(!ready.length) return;
+      var pref = ''; try{ if(window.FrameHubNative && FrameHubNative.getCfg) pref = String(FrameHubNative.getCfg('albumOrder') || ''); }catch(e){}
+      if(pref === 'shuffle'){ order = ready.slice(); for(var i = order.length - 1; i > 0; i--){ var j = Math.floor(Math.random() * (i + 1)), t = order[i]; order[i] = order[j]; order[j] = t; } }
+      albumUrls = order.map(function(it){ return it.blob; }); albumMeta = order.slice();
+      buildStage(); startSlideshow();
+      return;
+    }
+    /* photos removed from the album */
+    for(var r = albumMeta.length - 1; r >= 0; r--){
+      if(album.items[albumMeta[r].id] === albumMeta[r]) continue;
+      var gone = albumMeta[r];
+      if(albumMeta.length === 1) break;                      /* never leave the stage empty */
+      var el = photoEls[r]; if(el && el.parentNode) el.parentNode.removeChild(el);
+      photoEls.splice(r, 1); albumUrls.splice(r, 1); albumMeta.splice(r, 1);
+      if(r < photoIndex) photoIndex--; else if(r === photoIndex){ photoIndex = photoIndex % photoEls.length; photoEls[photoIndex].classList.add('active'); }
+      try{ URL.revokeObjectURL(gone.blob); }catch(e){}
+    }
+    /* new photos go in right after the one on screen, so they show up soon */
+    var have = {}; albumMeta.forEach(function(m){ have[m.id] = 1; });
+    var add = ready.filter(function(it){ return !have[it.id]; });
+    add.forEach(function(it){
+      var at = photoIndex + 1;                               /* newest-first among the photos still to come */
+      while(at < albumMeta.length && albumMeta[at].date >= it.date) at++;
+      var el = makeSlide(it.blob);
+      stage.insertBefore(el, photoEls[at] || null);
+      photoEls.splice(at, 0, el); albumUrls.splice(at, 0, it.blob); albumMeta.splice(at, 0, it);
+    });
+    if(add.length) startSlideshow();
+    albumCaption(photoIndex);
+  }
+  function albumRefresh(){
+    var key = albumKey(); if(!key || album.busy) return;
+    album.busy = true;
+    albumFetchRecords(key).then(function(recs){
+      var list = albumBuild(recs), seen = {};
+      list.forEach(function(it){
+        seen[it.id] = 1;
+        var cur = album.items[it.id];
+        if(cur){ cur.caption = it.caption; cur.date = it.date; if(!cur.blob){ cur.src = it.src; loadBlob(cur); } return; }
+        album.items[it.id] = it;
+        if(it.loc) placeFor(it.loc.lat, it.loc.lon).then(function(p){ it.place = p; if(albumMeta[photoIndex] === it) albumCaption(photoIndex); });
+        loadBlob(it);
+      });
+      if(list.length || !Object.keys(album.items).length){
+        Object.keys(album.items).forEach(function(k){ if(!seen[k]) delete album.items[k]; });
+      }
+      album.err = null; album.last = Date.now();
+      albumApply();
+    }).catch(function(e){ album.err = String(e && e.message || e); }).then(function(){ album.busy = false; });
+  }
+  window.__albumDebug = function(){
+    return {err: album.err, n: albumUrls.length, idx: photoIndex, items: albumMeta.map(function(m){ return {cap: m.caption, place: m.place || null, date: dateText(m.date, true), portrait: !!m.portrait}; })};
+  };
+  window.__albumReload = albumRefresh;
+  setInterval(albumRefresh, 1000 * 60 * 10);
+
+  /* ================= weather ================= */
+  var ICONS = {
+    sun: '<circle cx="12" cy="12" r="4.5" fill="currentColor"></circle><g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.5v2.3M12 19.2v2.3M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.5 12h2.3M19.2 12h2.3M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/></g>',
+    cloud: '<path d="M7.5 18a4.3 4.3 0 0 1-.4-8.6 5.3 5.3 0 0 1 10.3-1.7A4.1 4.1 0 0 1 17 18H7.5z" fill="currentColor" opacity=".92"></path>',
+    partly: '<circle cx="8" cy="9" r="3.6" fill="currentColor"></circle><path d="M10.5 19a4 4 0 0 1-.3-8 4.9 4.9 0 0 1 9.4-1.4A3.8 3.8 0 0 1 19 19h-8.5z" fill="currentColor" opacity=".92"></path>',
+    rain: '<path d="M7.5 14.5a4.3 4.3 0 0 1-.4-8.6 5.3 5.3 0 0 1 10.3-1.7A4.1 4.1 0 0 1 17 14.5H7.5z" fill="currentColor" opacity=".92"></path><g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8.5 17.5l-1.3 2.6M13 17.5l-1.3 2.6M17.5 17.5l-1.3 2.6"/></g>',
+    storm: '<path d="M7.5 13.5a4.3 4.3 0 0 1-.4-8.6 5.3 5.3 0 0 1 10.3-1.7A4.1 4.1 0 0 1 17 13.5H7.5z" fill="currentColor" opacity=".92"></path><path d="M13 13l-3 5h2.6l-1.6 4 4.6-6h-2.6l1.6-3z" fill="currentColor"></path>',
+    snow: '<path d="M7.5 13.5a4.3 4.3 0 0 1-.4-8.6 5.3 5.3 0 0 1 10.3-1.7A4.1 4.1 0 0 1 17 13.5H7.5z" fill="currentColor" opacity=".92"></path><g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 18v4M9 20l-1.6 1M9 20l1.6 1M15 18v4M15 20l-1.6 1M15 20l1.6 1"/></g>',
+    fog: '<g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 9h16M3 13h18M5 17h14M6 21h12"/></g>'
+  };
+  function iconForCode(code){
+    if(code === 0) return ICONS.sun;
+    if(code === 1 || code === 2) return ICONS.partly;
+    if(code === 3) return ICONS.cloud;
+    if(code === 45 || code === 48) return ICONS.fog;
+    if(code >= 51 && code <= 67) return ICONS.rain;
+    if(code >= 71 && code <= 77) return ICONS.snow;
+    if(code >= 80 && code <= 82) return ICONS.rain;
+    if(code >= 85 && code <= 86) return ICONS.snow;
+    if(code >= 95) return ICONS.storm;
+    return ICONS.cloud;
+  }
+
+  var weatherIcon = document.getElementById('weatherIcon');
+  var weatherTemp = document.getElementById('weatherTemp');
+  var weatherSub = document.getElementById('weatherSub');
+  var wxNowIcon = document.getElementById('wxNowIcon');
+  var wxNowTemp = document.getElementById('wxNowTemp');
+  var wxNowSub = document.getElementById('wxNowSub');
+  var wxHourly = document.getElementById('wxHourly');
+  var wxDaily = document.getElementById('wxDaily');
+
+  function fetchWeather(){
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + state.lat + '&longitude=' + state.lon +
+      '&current=temperature_2m,weather_code,apparent_temperature' +
+      '&hourly=temperature_2m,weather_code' +
+      '&daily=temperature_2m_max,temperature_2m_min,weather_code' +
+      '&temperature_unit=fahrenheit&timezone=auto';
+    fetch(url).then(function(r){ return r.json(); }).then(function(data){
+      var cur = data.current, daily = data.daily, hourly = data.hourly;
+
+      // home card
+      weatherIcon.innerHTML = iconForCode(cur.weather_code);
+      weatherIcon.style.color = 'var(--paper)';
+      weatherTemp.textContent = Math.round(cur.temperature_2m) + '°';
+      var hi = daily ? Math.round(daily.temperature_2m_max[0]) : null;
+      var lo = daily ? Math.round(daily.temperature_2m_min[0]) : null;
+      var parts = [state.city];
+      if(hi !== null && lo !== null) parts.push('H:' + hi + '° L:' + lo + '°');
+      weatherSub.textContent = parts.join(' · ');
+
+      // weather screen — now
+      wxNowIcon.innerHTML = iconForCode(cur.weather_code);
+      wxNowIcon.style.color = 'var(--paper)';
+      wxNowTemp.textContent = Math.round(cur.temperature_2m) + '°';
+      wxNowSub.textContent = state.city + ' · Feels like ' + Math.round(cur.apparent_temperature) + '° · H:' + hi + '° L:' + lo + '°';
+
+      // hourly strip (next 12 hrs from now)
+      wxHourly.innerHTML = '';
+      if(hourly && hourly.time){
+        var nowMs = Date.now();
+        var startIdx = hourly.time.findIndex(function(t){ return new Date(t).getTime() >= nowMs; });
+        if(startIdx < 0) startIdx = 0;
+        for(var i = startIdx; i < Math.min(startIdx + 12, hourly.time.length); i++){
+          var hr = document.createElement('div');
+          hr.className = 'wx-hour glass-card';
+          var label = new Date(hourly.time[i]).toLocaleTimeString(undefined, {hour:'numeric'});
+          hr.innerHTML = '<div class="wx-hour-label">' + label + '</div>' +
+            '<svg viewBox="0 0 24 24" fill="none" style="color:var(--paper)">' + iconForCode(hourly.weather_code[i]) + '</svg>' +
+            '<div class="wx-hour-temp">' + Math.round(hourly.temperature_2m[i]) + '°</div>';
+          wxHourly.appendChild(hr);
+        }
+      }
+
+      // 7-day
+      wxDaily.innerHTML = '';
+      if(daily && daily.time){
+        daily.time.forEach(function(d, i){
+          var row = document.createElement('div');
+          row.className = 'wx-day-row glass-card';
+          var dayName = i === 0 ? 'Today' : new Date(d).toLocaleDateString(undefined, {weekday:'short'});
+          row.innerHTML = '<span class="wx-day-name">' + dayName + '</span>' +
+            '<svg viewBox="0 0 24 24" fill="none" style="color:var(--paper)">' + iconForCode(daily.weather_code[i]) + '</svg>' +
+            '<span class="wx-day-range"><b>' + Math.round(daily.temperature_2m_max[i]) + '°</b> / ' + Math.round(daily.temperature_2m_min[i]) + '°</span>';
+          wxDaily.appendChild(row);
+        });
+      }
+    }).catch(function(){
+      weatherSub.textContent = state.city + ' · weather unavailable';
+      wxNowSub.textContent = 'Weather unavailable right now';
+    });
+  }
+
+  function homeZipCfg(){
+    var v = ''; try{ if(window.FrameHubNative && FrameHubNative.getCfg) v = String(FrameHubNative.getCfg('homeZip') || ''); }catch(e){}
+    v = v.trim(); return /^\d{5}$/.test(v) ? v : '';
+  }
+  function tryGeolocate(){
+    if(!state.cityIsAuto) { fetchWeather(); return; }
+    var hz = homeZipCfg();
+    if(hz){
+      fetch('https://api.zippopotam.us/us/' + hz).then(function(r){ return r.json(); }).then(function(d){
+        var p = d.places && d.places[0];
+        if(!p) throw new Error('zip');
+        state.lat = parseFloat(p.latitude); state.lon = parseFloat(p.longitude);
+        state.city = p['place name'] + ', ' + p['state abbreviation'];
+        fetchWeather();
+      }).catch(function(){ tryGeolocateIp(); });
+      return;
+    }
+    tryGeolocateIp();
+  }
+  function tryGeolocateIp(){
+    function viaIp(url, map, next){
+      fetch(url).then(function(r){ return r.json(); }).then(function(d){
+        var m = map(d);
+        if(m && isFinite(m.lat) && isFinite(m.lon) && m.city){
+          state.lat = m.lat; state.lon = m.lon; state.city = m.city; fetchWeather();
+        } else { next(); }
+      }).catch(next);
+    }
+    viaIp('https://ipwho.is/', function(d){
+      if(d.success === false) return null;
+      return {lat: d.latitude, lon: d.longitude, city: d.city + (d.region_code ? ', ' + d.region_code : '')};
+    }, function(){
+      viaIp('https://ipapi.co/json/', function(d){
+        return {lat: d.latitude, lon: d.longitude, city: d.city + (d.region_code ? ', ' + d.region_code : '')};
+      }, function(){ fetchWeather(); });
+    });
+  }
+  tryGeolocate();
+  setInterval(fetchWeather, 1000 * 60 * 20);
+
+  /* ================= calendar ================= */
+  var calFrameWrap = document.getElementById('calFrameWrap');
+  var calEmpty = document.getElementById('calEmpty');
+  var calBuilt = false;
+  function ensureCalendarFrameLegacy(){
+    var id = (state.calendarId || '').trim();
+    if(!id){ calEmpty.hidden = false; calFrameWrap.innerHTML = ''; calBuilt = false; return; }
+    calEmpty.hidden = true;
+    if(calBuilt === id) return;
+    var src = 'https://calendar.google.com/calendar/embed?' +
+      'src=' + encodeURIComponent(id) +
+      '&mode=AGENDA&showTitle=0&showNav=1&showDate=1&showPrint=0&showTabs=0&showCalendars=0&showTz=0&bgcolor=%23ffffff';
+    calFrameWrap.innerHTML = '<iframe src="' + src + '" title="Calendar"></iframe>';
+    calBuilt = id;
+  }
+
+  /* ================= quick notes (home agenda card) ================= */
+  var agendaList = document.getElementById('agendaList');
+  function renderLegacyAgenda(){
+    agendaList.innerHTML = '';
+    var items = state.agenda || [];
+    if(!items.length){
+      var empty = document.createElement('div');
+      empty.className = 'agenda-empty';
+      empty.textContent = 'Nothing noted.';
+      agendaList.appendChild(empty);
+      return;
+    }
+    items.forEach(function(item){
+      var row = document.createElement('div');
+      row.className = 'agenda-item';
+      var t = document.createElement('span'); t.className='agenda-time'; t.textContent = item.time || '';
+      var l = document.createElement('span'); l.className='agenda-label'; l.textContent = item.label || '';
+      row.appendChild(t); row.appendChild(l);
+      agendaList.appendChild(row);
+    });
+  }
+  renderLegacyAgenda();
+
+
+  /* ================= calendar feed (.ics from iCloud public calendar or Google) ================= */
+  var cal = { events: [], src: null, loaded: false, error: null };
+  var nativeCbs = {}, nativeSeq = 0;
+  window.__nativeCb = function(id, code, text){ var f = nativeCbs[id]; if(f){ delete nativeCbs[id]; f(code, text); } };
+
+  function calSource(){
+    var v = '';
+    try{ if(window.FrameHubNative && FrameHubNative.getCfg) v = String(FrameHubNative.getCfg('calUrl') || ''); }catch(e){}
+    if(!v) v = (state.calendarId || '').trim();
+    if(!v) return '';
+    if(/^webcals?:/i.test(v)) return v.replace(/^webcals?:/i, 'https:');
+    if(/^https?:/i.test(v)) return v;
+    return 'https://calendar.google.com/calendar/ical/' + encodeURIComponent(v) + '/public/basic.ics';
+  }
+  function fetchFeed(url){
+    return new Promise(function(resolve, reject){
+      if(window.FrameHubNative && FrameHubNative.fetchText){
+        var id = 'c' + (++nativeSeq);
+        nativeCbs[id] = function(code, text){ if(code === 200) resolve(text); else reject(new Error('HTTP ' + code)); };
+        FrameHubNative.fetchText(url, id);
+      } else {
+        fetch(url).then(function(r){ if(!r.ok) throw new Error('HTTP ' + r.status); return r.text(); }).then(resolve, reject);
+      }
+    });
+  }
+
+  function unesc(v){ return v.replace(/\\[nN]/g, ' ').replace(/\\(.)/g, '$1'); }
+  function tzOffsetMs(tz, utcMs){
+    var f = new Intl.DateTimeFormat('en-US', {timeZone: tz, hour12: false, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    var o = {}; f.formatToParts(new Date(utcMs)).forEach(function(p){ o[p.type] = p.value; });
+    var h = +o.hour; if(h === 24) h = 0;
+    return Date.UTC(+o.year, +o.month - 1, +o.day, h, +o.minute, +o.second) - utcMs;
+  }
+  function parseDT(val, params){
+    var m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z?))?$/.exec(val.trim());
+    if(!m) return null;
+    var y = +m[1], mo = +m[2] - 1, d = +m[3];
+    if(m[4] === undefined) return new Date(y, mo, d);                       /* all-day (floating date) */
+    var h = +m[4], mi = +m[5], se = +m[6];
+    if(m[7] === 'Z') return new Date(Date.UTC(y, mo, d, h, mi, se));
+    var tz = params && params.TZID;
+    if(tz){
+      try{
+        var guess = Date.UTC(y, mo, d, h, mi, se);
+        var t = guess - tzOffsetMs(tz, guess);
+        t = guess - tzOffsetMs(tz, t);
+        return new Date(t);
+      }catch(e){}
+    }
+    return new Date(y, mo, d, h, mi, se);
+  }
+  var DOW = {SU:0, MO:1, TU:2, WE:3, TH:4, FR:5, SA:6};
+  function parseRR(v){
+    var r = {freq:'', interval:1, count:0, until:null, byday:[], bymonthday:[]};
+    v.split(';').forEach(function(p){
+      var kv = p.split('='), k = kv[0].toUpperCase(), x = kv[1] || '';
+      if(k === 'FREQ') r.freq = x.toUpperCase();
+      else if(k === 'INTERVAL') r.interval = Math.max(1, +x || 1);
+      else if(k === 'COUNT') r.count = +x || 0;
+      else if(k === 'UNTIL') r.until = parseDT(x, null);
+      else if(k === 'BYDAY') x.split(',').forEach(function(d){ var mm = /([A-Z]{2})$/.exec(d); if(mm && DOW[mm[1]] !== undefined) r.byday.push(DOW[mm[1]]); });
+      else if(k === 'BYMONTHDAY') x.split(',').forEach(function(d){ if(+d > 0) r.bymonthday.push(+d); });
+    });
+    r.byday.sort(); r.bymonthday.sort(function(a,b){ return a-b; });
+    return r;
+  }
+  function parseICS(text){
+    var lines = text.replace(/\r?\n[ \t]/g, '').split(/\r?\n/), evs = [], cur = null;
+    for(var i=0;i<lines.length;i++){
+      var ln = lines[i];
+      if(ln === 'BEGIN:VEVENT'){ cur = {ex: []}; continue; }
+      if(ln === 'END:VEVENT'){ if(cur && cur.start && cur.status !== 'CANCELLED') evs.push(cur); cur = null; continue; }
+      if(!cur) continue;
+      var ci = ln.indexOf(':'); if(ci < 0) continue;
+      var parts = ln.slice(0, ci).split(';'), name = parts[0].toUpperCase(), val = ln.slice(ci + 1), params = {};
+      for(var k=1;k<parts.length;k++){ var eq = parts[k].indexOf('='); if(eq > 0) params[parts[k].slice(0, eq).toUpperCase()] = parts[k].slice(eq + 1).replace(/"/g, ''); }
+      if(name === 'SUMMARY') cur.summary = unesc(val);
+      else if(name === 'UID') cur.uid = val;
+      else if(name === 'STATUS') cur.status = val.toUpperCase();
+      else if(name === 'DTSTART'){ cur.start = parseDT(val, params); cur.allDay = params.VALUE === 'DATE' || /^\d{8}$/.test(val.trim()); }
+      else if(name === 'DTEND') cur.end = parseDT(val, params);
+      else if(name === 'RRULE') cur.rrule = parseRR(val);
+      else if(name === 'EXDATE') val.split(',').forEach(function(v){ var d = parseDT(v, params); if(d) cur.ex.push(d.getTime()); });
+      else if(name === 'RECURRENCE-ID') cur.recId = parseDT(val, params);
+    }
+    return evs;
+  }
+
+  var BDAY_RE = /birthday|b-?day|🎂/i;
+  function isBirthday(ev){
+    if(BDAY_RE.test(ev.summary || '')) return true;
+    return !!(ev.allDay && ev.rrule && ev.rrule.freq === 'YEARLY' && /['’]s\b/.test(ev.summary || ''));
+  }
+  function birthdayName(t){
+    var x = (t || '').replace(/\uD83C[\uDF82\uDF89\uDF81]/g, '').trim();
+    var m = /^(.*?)['’]s?\s+(?:(\d+)(?:st|nd|rd|th)\s+)?(?:birthday|b-?day)\b/i.exec(x);
+    if(m && m[1]) return m[1].trim() + (m[2] ? ' (' + m[2] + ')' : '');
+    m = /^(?:birthday|b-?day)\s*[:\-–—]\s*(.+)$/i.exec(x);
+    if(m) return m[1].trim();
+    return x.replace(/\s*\b(?:birthday|b-?day)\b\s*/i, ' ').trim() || x;
+  }
+
+  /* expand events (incl. repeating ones) into concrete occurrences inside [from, to) */
+  function occurrences(from, to){
+    var ovr = {}, out = [];
+    cal.events.forEach(function(ev){ if(ev.recId) ovr[(ev.uid || '') + '|' + ev.recId.getTime()] = true; });
+    cal.events.forEach(function(ev){
+      var dur = ev.end ? ev.end.getTime() - ev.start.getTime() : (ev.allDay ? 86400000 : 0);
+      var days = Math.max(1, Math.round(dur / 86400000));
+      function add(st){
+        if(ev.ex.indexOf(st.getTime()) >= 0) return;
+        if(!ev.recId && ovr[(ev.uid || '') + '|' + st.getTime()]) return;
+        var en = ev.allDay ? new Date(st.getFullYear(), st.getMonth(), st.getDate() + days) : new Date(st.getTime() + dur);
+        if(en > from && st < to) out.push({start: st, end: en, allDay: !!ev.allDay, summary: ev.summary || '(no title)', birthday: isBirthday(ev)});
+      }
+      var r = ev.rrule;
+      if(!r || !r.freq){ add(ev.start); return; }
+      var s0 = ev.start, y = s0.getFullYear(), mo = s0.getMonth(), d = s0.getDate(), n = 0, guard = 0, stop = false;
+      function mk(yy, mm, dd){ return ev.allDay ? new Date(yy, mm, dd) : new Date(yy, mm, dd, s0.getHours(), s0.getMinutes(), s0.getSeconds()); }
+      function cand(st){
+        if(st < s0) return;
+        n++;
+        if(r.count && n > r.count){ stop = true; return; }
+        if(r.until && st > r.until){ stop = true; return; }
+        if(st >= to){ stop = true; return; }
+        add(st);
+      }
+      for(var i = 0; !stop && guard < 20000; i += r.interval, guard++){
+        if(r.freq === 'YEARLY'){ var a = mk(y + i, mo, d); if(a.getMonth() === mo) cand(a); }
+        else if(r.freq === 'MONTHLY'){
+          (r.bymonthday.length ? r.bymonthday : [d]).forEach(function(bd){ if(stop) return; var a = mk(y, mo + i, bd); if(a.getDate() === bd) cand(a); });
+        }
+        else if(r.freq === 'WEEKLY'){
+          (r.byday.length ? r.byday : [s0.getDay()]).forEach(function(wd){ if(stop) return; cand(mk(y, mo, d - s0.getDay() + i * 7 + wd)); });
+        }
+        else if(r.freq === 'DAILY'){ cand(mk(y, mo, d + i)); }
+        else break;
+      }
+    });
+    out.sort(function(a, b){ return a.start - b.start; });
+    return out;
+  }
+
+  /* ---------- formatting ---------- */
+  var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var WD = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  function sod(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+  function dayDiff(d, now){ return Math.round((sod(d) - sod(now)) / 86400000); }
+  function fmtTime(d){
+    if(state.clockFormat === '24') return pad(d.getHours()) + ':' + pad(d.getMinutes());
+    var h = d.getHours() % 12; if(h === 0) h = 12;
+    return h + ':' + pad(d.getMinutes()) + (d.getHours() >= 12 ? ' PM' : ' AM');
+  }
+  function dayWord(d, now){
+    var k = dayDiff(d, now);
+    if(k === 0) return 'Today';
+    if(k === 1) return 'Tomorrow';
+    if(k > 1 && k < 7) return WD[d.getDay()];
+    return MON[d.getMonth()] + ' ' + d.getDate();
+  }
+
+  /* ---------- home card: Birthdays / Upcoming events, each split Today / Next week / Later this month ---------- */
+  var agendaTitleEl = document.getElementById('agendaTitle');
+  function agendaSection(head, groups, cls){
+    var wrap = document.createElement('div'); wrap.className = 'agenda-list-block ' + cls;
+    var h = document.createElement('div'); h.className = 'agenda-head'; h.textContent = head; wrap.appendChild(h);
+    groups.forEach(function(g){
+      var s = document.createElement('div'); s.className = 'agenda-sub'; s.textContent = g.name; wrap.appendChild(s);
+      g.rows.forEach(function(rw){
+        var row = document.createElement('div'); row.className = 'agenda-item' + (rw[0] ? '' : ' no-time');
+        var t = document.createElement('span'); t.className = 'agenda-time'; t.textContent = rw[0];
+        var l = document.createElement('span'); l.className = 'agenda-label'; l.textContent = rw[1];
+        row.appendChild(t); row.appendChild(l); wrap.appendChild(row);
+      });
+    });
+    return wrap;
+  }
+  /* Today = today (or still running); Next week = the next 7 days; Later this month = after that, to the end of this calendar month.
+     Anything already listed in an earlier group is not repeated (so a weekly item shows under Today only). */
+  function buildGroups(items, now, seen, caps){
+    var g = [{name:'Today', rows:[]}, {name:'Next week', rows:[]}, {name:'Later this month', rows:[]}];
+    items.forEach(function(o){
+      var k = dayDiff(o.start, now), idx;
+      if(k <= 0) idx = 0; else if(k <= 7) idx = 1;
+      else if(o.start.getMonth() === now.getMonth() && o.start.getFullYear() === now.getFullYear()) idx = 2;
+      else return;
+      var key = (o.birthday ? 'b:' : 'e:') + String(o.summary).toLowerCase();
+      if(seen[key] !== undefined && seen[key] < idx) return;       /* already shown in an earlier group */
+      if(seen[key] === idx && idx !== 0) return;                     /* same thing twice inside one group */
+      if(g[idx].rows.length >= caps[idx]) return;
+      var when;
+      if(o.birthday){
+        when = idx === 0 ? '' : (idx === 1 ? WD[o.start.getDay()] : MON[o.start.getMonth()] + ' ' + o.start.getDate());
+        g[idx].rows.push([when, birthdayName(o.summary)]);
+      } else {
+        var tm = o.allDay ? 'All day' : fmtTime(o.start);
+        if(idx === 0) when = (k < 0 && o.allDay) ? 'All day' : tm;
+        else if(idx === 1) when = WD[o.start.getDay()] + (o.allDay ? '' : ' ' + tm);
+        else when = MON[o.start.getMonth()] + ' ' + o.start.getDate();
+        g[idx].rows.push([when, o.summary]);
+      }
+      if(seen[key] === undefined) seen[key] = idx;
+    });
+    return g.filter(function(x){ return x.rows.length; });
+  }
+  function renderAgenda(){
+    if(!calSource()){ agendaTitleEl.hidden = false; renderLegacyAgenda(); return; }
+    agendaTitleEl.hidden = true;
+    agendaList.innerHTML = '';
+    if(!cal.loaded){
+      var w = document.createElement('div'); w.className = 'agenda-empty';
+      w.textContent = cal.error ? 'Calendar unavailable' : 'Loading calendar…';
+      agendaList.appendChild(w); return;
+    }
+    var now = new Date(), t0 = sod(now);
+    var eom = new Date(now.getFullYear(), now.getMonth() + 1, 1);                       /* start of next month */
+    var wk = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + 8);               /* covers "next week" */
+    var occ = occurrences(t0, eom > wk ? eom : wk).filter(function(o){ return o.allDay || o.end > now; });
+    var bd = occ.filter(function(o){ return o.birthday; }), ev = occ.filter(function(o){ return !o.birthday; });
+    var bg = buildGroups(bd, now, {}, [4, 3, 3]), eg = buildGroups(ev, now, {}, [5, 4, 3]);
+    var cardEl = agendaList.parentNode, MAXH = Math.min(660, window.innerHeight * 0.62);
+    function draw(){
+      agendaList.innerHTML = '';
+      if(bg.length) agendaList.appendChild(agendaSection('Birthdays', bg, 'bday'));
+      if(eg.length) agendaList.appendChild(agendaSection('Upcoming Events', eg, 'events'));
+      if(!bg.length && !eg.length){
+        var e = document.createElement('div'); e.className = 'agenda-empty'; e.textContent = 'Nothing coming up this month';
+        agendaList.appendChild(e);
+      }
+    }
+    /* keep the card inside its space: if it grows too tall, drop the furthest-away rows first (never Today) */
+    function trimOne(){
+      var order = [[eg, 'Later this month'], [bg, 'Later this month'], [eg, 'Next week'], [bg, 'Next week']];
+      for(var i = 0; i < order.length; i++){
+        var gs = order[i][0], g = null;
+        gs.forEach(function(x){ if(x.name === order[i][1]) g = x; });
+        if(g && g.rows.length){ g.rows.pop(); if(!g.rows.length) gs.splice(gs.indexOf(g), 1); return true; }
+      }
+      return false;
+    }
+    draw();
+    for(var guard = 0; guard < 30 && cardEl.getBoundingClientRect().height > MAXH && trimOne(); guard++) draw();
+  }
+  window.__agendaText = function(){ return agendaList.innerText; };
+
+  /* ---------- calendar screen ---------- */
+  var calViewEl = document.getElementById('calView');
+  var calMonthEl = document.getElementById('calMonth');
+  var calAgendaEl = document.getElementById('calAgenda');
+  function renderCalendarScreen(){
+    var now = new Date(), y = now.getFullYear(), m = now.getMonth();
+    var first = new Date(y, m, 1), gridStart = new Date(y, m, 1 - first.getDay());
+    var gridEnd = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + 42);
+    var monthOcc = cal.loaded ? occurrences(gridStart, gridEnd) : [];
+    var marks = {};
+    monthOcc.forEach(function(o){
+      var d = sod(o.start);
+      while(d < o.end && d < gridEnd){ var key = d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(); marks[key] = marks[key] === 'e' ? 'e' : (o.birthday ? 'b' : 'e'); d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1); }
+    });
+    var html = '<div class="cal-month-title">' + ['January','February','March','April','May','June','July','August','September','October','November','December'][m] + ' ' + y + '</div><div class="cal-grid">';
+    WD.forEach(function(w){ html += '<div class="cal-dow">' + w.charAt(0) + '</div>'; });
+    for(var i=0;i<42;i++){
+      var d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
+      var key = d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+      var cls = 'cal-day' + (d.getMonth() !== m ? ' other' : '') + (dayDiff(d, now) === 0 ? ' today' : '');
+      html += '<div class="' + cls + '"><span>' + d.getDate() + '</span>' + (marks[key] ? '<i class="dot' + (marks[key] === 'b' ? ' bday' : '') + '"></i>' : '') + '</div>';
+    }
+    calMonthEl.innerHTML = html + '</div>';
+
+    calAgendaEl.innerHTML = '';
+    if(!cal.loaded){ calAgendaEl.innerHTML = '<div class="cal-none">' + (cal.error ? 'Calendar unavailable right now.' : 'Loading calendar…') + '</div>'; return; }
+    var t0 = sod(now), occ = occurrences(t0, new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + 30)), lastKey = '', blockEl = null, count = 0;
+    occ.forEach(function(o){
+      if(!o.allDay && o.end <= now) return;
+      if(count >= 40) return; count++;
+      var key = sod(o.start).getTime(); if(sod(o.start) < t0) key = t0.getTime();
+      if(key !== lastKey){
+        blockEl = document.createElement('div'); blockEl.className = 'cal-day-block';
+        var hd = document.createElement('div'); hd.className = 'cal-day-head';
+        var dd = sod(o.start) < t0 ? t0 : o.start;
+        var k = dayDiff(dd, now);
+        hd.textContent = (k === 0 ? 'Today' : k === 1 ? 'Tomorrow' : WD[dd.getDay()]) + ' · ' + MON[dd.getMonth()] + ' ' + dd.getDate();
+        blockEl.appendChild(hd); calAgendaEl.appendChild(blockEl); lastKey = key;
+      }
+      var row = document.createElement('div'); row.className = 'cal-event';
+      var tm = document.createElement('span'); tm.className = 'cal-event-time'; tm.textContent = o.allDay ? 'All day' : fmtTime(o.start);
+      var tt = document.createElement('span'); tt.className = 'cal-event-title';
+      tt.textContent = (o.birthday ? '🎂 ' + birthdayName(o.summary) + "’s birthday" : o.summary);
+      row.appendChild(tm); row.appendChild(tt); blockEl.appendChild(row);
+    });
+    if(!count) calAgendaEl.innerHTML = '<div class="cal-none">Nothing in the next 30 days.</div>';
+  }
+  function ensureCalendarFrame(){
+    var src = calSource();
+    if(!src){ calViewEl.hidden = true; ensureCalendarFrameLegacy(); return; }
+    calEmpty.hidden = true; calFrameWrap.style.display = 'none'; calViewEl.hidden = false;
+    if(src !== cal.src) refreshCalendar();
+    renderCalendarScreen();
+  }
+
+  var calTimer = null;
+  function refreshCalendar(){
+    var src = calSource();
+    cal.src = src;
+    if(!src){ cal.events = []; cal.loaded = false; cal.error = null; renderAgenda(); return; }
+    fetchFeed(src).then(function(text){
+      if(src !== cal.src) return;
+      cal.events = parseICS(text); cal.loaded = true; cal.error = null;
+    }).catch(function(e){
+      cal.error = String(e && e.message || e);
+    }).then(function(){
+      renderAgenda();
+      if(SCREEN_ORDER[currentScreen] === 'calendar') renderCalendarScreen();
+    });
+  }
+  window.__calDebug = function(){ return {src: cal.src, loaded: cal.loaded, error: cal.error, n: cal.events.length}; };
+  window.__calLoadText = function(text){ cal.src = calSource() || 'test'; cal.events = parseICS(text); cal.loaded = true; cal.error = null; renderAgenda(); renderCalendarScreen(); };
+  setInterval(refreshCalendar, 1000 * 60 * 15);
+  setInterval(function(){ if(cal.loaded){ renderAgenda(); if(SCREEN_ORDER[currentScreen] === 'calendar') renderCalendarScreen(); } }, 1000 * 60);
+
+  /* ================= settings modal ================= */
+  var overlay = document.getElementById('modalOverlay');
+  var gearBtn = document.getElementById('gearBtn');
+  var cancelBtn = document.getElementById('cancelBtn');
+  var saveBtn = document.getElementById('saveBtn');
+  var citySearch = document.getElementById('citySearch');
+  var cityResults = document.getElementById('cityResults');
+  var cityCurrent = document.getElementById('cityCurrent');
+  var fmt12 = document.getElementById('fmt12');
+  var fmt24 = document.getElementById('fmt24');
+  var calendarIdField = document.getElementById('calendarId');
+  var photosAlbumField = document.getElementById('photosAlbumUrl');
+  var agendaRows = document.getElementById('agendaRows');
+  var addAgendaBtn = document.getElementById('addAgenda');
+  var photoUrlsField = document.getElementById('photoUrls');
+
+  var draft = null;
+
+  function openModal(){
+    draft = JSON.parse(JSON.stringify(state));
+    cityCurrent.textContent = 'Currently: ' + draft.city + (draft.cityIsAuto ? ' (auto)' : '');
+    citySearch.value = '';
+    cityResults.innerHTML = '';
+    setFmtButtons(draft.clockFormat);
+    calendarIdField.value = draft.calendarId || '';
+    photosAlbumField.value = draft.photosAlbumUrl || '';
+    buildAgendaRows();
+    photoUrlsField.value = (draft.photos || []).join('\n');
+    overlay.hidden = false;
+    setTimeout(function(){ var f = modalFocusables(); var b = null; for(var i=0;i<f.length;i++){ if(f[i].tagName === 'BUTTON'){ b = f[i]; break; } } if(b) b.focus(); }, 30);
+  }
+  function closeModal(){ overlay.hidden = true; if(document.activeElement && document.activeElement.blur) document.activeElement.blur(); }
+
+  /* D-pad focus inside the settings panel */
+  function modalFocusables(){
+    var all = overlay.querySelectorAll('button, input[type=text], textarea');
+    return Array.prototype.filter.call(all, function(el){ return !el.disabled && el.offsetParent !== null; });
+  }
+  function moveModalFocus(dir){
+    var f = modalFocusables(); if(!f.length) return;
+    var i = f.indexOf(document.activeElement);
+    i = i < 0 ? 0 : Math.max(0, Math.min(f.length - 1, i + dir));
+    f[i].focus();
+    if(f[i].scrollIntoView) f[i].scrollIntoView({block:'nearest'});
+  }
+  function openAndroid(action){
+    if(window.FrameHubNative){
+      if(action === 'wifi') window.FrameHubNative.openWifiSettings(); else window.FrameHubNative.openSettings();
+    } else {
+      window.location.href = 'intent:#Intent;action=android.settings.' + (action === 'wifi' ? 'WIFI_SETTINGS' : 'SETTINGS') + ';end';
+    }
+  }
+  document.getElementById('wifiBtn').addEventListener('click', function(){ openAndroid('wifi'); });
+  document.getElementById('androidSettingsBtn').addEventListener('click', function(){ openAndroid('settings'); });
+  gearBtn.addEventListener('click', openModal);
+  cancelBtn.addEventListener('click', closeModal);
+  overlay.addEventListener('click', function(e){ if(e.target === overlay) closeModal(); });
+
+  function setFmtButtons(fmt){
+    fmt12.classList.toggle('active', fmt === '12');
+    fmt24.classList.toggle('active', fmt === '24');
+  }
+  fmt12.addEventListener('click', function(){ draft.clockFormat = '12'; setFmtButtons('12'); });
+  fmt24.addEventListener('click', function(){ draft.clockFormat = '24'; setFmtButtons('24'); });
+
+  var cityDebounce = null;
+  citySearch.addEventListener('input', function(){
+    var q = citySearch.value.trim();
+    if(cityDebounce) clearTimeout(cityDebounce);
+    if(q.length < 2){ cityResults.innerHTML=''; return; }
+    cityDebounce = setTimeout(function(){
+      fetch('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(q) + '&count=5')
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+          cityResults.innerHTML = '';
+          (data.results || []).forEach(function(place){
+            var btn = document.createElement('button');
+            btn.className = 'city-result'; btn.type = 'button';
+            btn.textContent = place.name + (place.admin1 ? ', ' + place.admin1 : '') + (place.country ? ', ' + place.country : '');
+            btn.addEventListener('click', function(){
+              draft.lat = place.latitude; draft.lon = place.longitude;
+              draft.city = place.name + (place.admin1 ? ', ' + place.admin1 : '');
+              draft.cityIsAuto = false;
+              cityCurrent.textContent = 'Currently: ' + draft.city;
+              cityResults.innerHTML = ''; citySearch.value = '';
+            });
+            cityResults.appendChild(btn);
+          });
+        }).catch(function(){});
+    }, 350);
+  });
+
+  function buildAgendaRows(){
+    agendaRows.innerHTML = '';
+    (draft.agenda || []).forEach(function(item, idx){ agendaRows.appendChild(agendaRowEl(item, idx)); });
+  }
+  function agendaRowEl(item, idx){
+    var row = document.createElement('div'); row.className = 'list-row';
+    var timeInput = document.createElement('input');
+    timeInput.type='text'; timeInput.className='agenda-time-input'; timeInput.placeholder='9:00 AM';
+    timeInput.value = item.time || ''; timeInput.id = 'agendaTime'+idx;
+    timeInput.addEventListener('input', function(){ draft.agenda[idx].time = timeInput.value; });
+    var labelInput = document.createElement('input');
+    labelInput.type='text'; labelInput.placeholder='Note'; labelInput.value = item.label || ''; labelInput.id = 'agendaLabel'+idx;
+    labelInput.addEventListener('input', function(){ draft.agenda[idx].label = labelInput.value; });
+    var remove = document.createElement('button');
+    remove.className='row-remove'; remove.type='button'; remove.textContent='×';
+    remove.addEventListener('click', function(){ draft.agenda.splice(idx,1); buildAgendaRows(); });
+    row.appendChild(timeInput); row.appendChild(labelInput); row.appendChild(remove);
+    return row;
+  }
+  addAgendaBtn.addEventListener('click', function(){
+    draft.agenda = draft.agenda || [];
+    draft.agenda.push({time:'', label:''});
+    buildAgendaRows();
+  });
+
+  saveBtn.addEventListener('click', function(){
+    draft.photos = photoUrlsField.value.split('\n').map(function(s){ return s.trim(); }).filter(Boolean);
+    if(!draft.photos.length) draft.photos = DEFAULTS.photos.slice();
+    draft.calendarId = calendarIdField.value.trim();
+    draft.photosAlbumUrl = photosAlbumField.value.trim();
+    state = draft;
+    saveState(state);
+    calBuilt = false; cal.src = null;
+    renderClock(); refreshCalendar(); fetchWeather();
+    if(SCREEN_ORDER[currentScreen] === 'calendar') ensureCalendarFrame();
+    refreshGooglePhotosAlbum().then(function(){
+      buildStage(); startSlideshow();
+      if(SCREEN_ORDER[currentScreen] === 'photos') renderPhotoGrid();
+    });
+    closeModal();
+  });
+
+  /* ================= remote / keyboard navigation ================= */
+  document.addEventListener('keydown', function(e){
+    if(!lightbox.hidden){
+      if(e.key === 'Escape' || e.key === 'Backspace') { closeLightbox(); e.preventDefault(); }
+      return;
+    }
+    if(!overlay.hidden){
+      var ae = document.activeElement;
+      var typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
+      if(e.key === 'Escape' || (e.key === 'Backspace' && !typing)) { closeModal(); e.preventDefault(); }
+      else if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){ moveModalFocus(e.key === 'ArrowDown' ? 1 : -1); e.preventDefault(); }
+      else if((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !typing){ moveModalFocus(e.key === 'ArrowRight' ? 1 : -1); e.preventDefault(); }
+      return;
+    }
+    switch(e.key){
+      case 'ArrowLeft':  goToScreen(currentScreen - 1); e.preventDefault(); break;
+      case 'ArrowRight': goToScreen(currentScreen + 1); e.preventDefault(); break;
+      case 'ArrowUp':
+      case 'ArrowDown': {
+        var activeEl = screenEls[SCREEN_ORDER[currentScreen]].querySelector('.sub-screen');
+        if(activeEl) activeEl.scrollBy({top: e.key === 'ArrowDown' ? 160 : -160, behavior:'smooth'});
+        break;
+      }
+      case 'Enter':
+        if(currentScreen === 0){ openModal(); e.preventDefault(); }
+        break;
+      case 'Escape':
+      case 'Backspace':
+        if(currentScreen !== 0){ goToScreen(0); e.preventDefault(); }
+        break;
+    }
+  });
+
+  /* ================= wake lock ================= */
+  var wakeLock = null;
+  function requestWake(){
+    if(!('wakeLock' in navigator)) return;
+    navigator.wakeLock.request('screen').then(function(l){ wakeLock = l; }).catch(function(){});
+  }
+  requestWake();
+  document.addEventListener('visibilitychange', function(){ if(document.visibilityState === 'visible') requestWake(); });
+
+  /* ================= headlines (top-left) ================= */
+  var NEWS_DEFAULTS = [
+    {n:'NPR',  u:'https://feeds.npr.org/1001/rss.xml'},
+    {n:'BBC',  u:'https://feeds.bbci.co.uk/news/rss.xml'},
+    {n:'WWL',  u:'https://www.wwltv.com/feeds/syndication/rss/news/local'},
+    {n:'WDSU', u:'https://www.wdsu.com/topstories-rss'}
+  ];
+  var newsCardEl = document.getElementById('newsCard'), newsListEl = document.getElementById('newsList');
+  var newsPool = [], newsPage = 0, newsTimer = null, NEWS_PER_PAGE = 4;
+  function newsFeeds(){
+    var v = '';
+    try{ if(window.FrameHubNative && FrameHubNative.getCfg) v = String(FrameHubNative.getCfg('newsFeeds') || ''); }catch(e){}
+    v = v.trim();
+    if(!v) return NEWS_DEFAULTS;
+    if(v === 'off') return [];
+    /* "Name|https://...,Name2|https://..."  (name optional) */
+    return v.split(/[,\n;]+/).map(function(p){
+      p = p.trim(); if(!p) return null;
+      var i = p.indexOf('|'), nm = i > 0 ? p.slice(0, i).trim() : '', u = i > 0 ? p.slice(i + 1).trim() : p;
+      if(!/^https?:\/\//i.test(u)) return null;
+      if(!nm){ try{ nm = u.replace(/^https?:\/\/(www\.|feeds\.|rss\.)?/i, '').split('/')[0].replace(/\.(com|org|net|co\.uk|tv)$/,''); }catch(e){ nm = 'News'; } }
+      return {n:nm, u:u};
+    }).filter(Boolean);
+  }
+  function cleanText(s){
+    var d = document.createElement('div');
+    d.innerHTML = String(s || '').replace(/<!\[CDATA\[|\]\]>/g, '');
+    d.querySelectorAll('script,style').forEach(function(x){ x.remove(); });
+    return (d.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+  function clip(s, n){
+    if(s.length <= n) return s;
+    var c = s.slice(0, n), sp = c.lastIndexOf(' ');
+    return (sp > n * 0.6 ? c.slice(0, sp) : c).replace(/[\s,;:\-–—]+$/, '') + '…';
+  }
+  function tx(el, tag){ var x = el.getElementsByTagName(tag)[0]; return x ? (x.textContent || '') : ''; }
+  function parseFeed(text, name){
+    var doc = new DOMParser().parseFromString(text, 'text/xml'), out = [];
+    if(doc.getElementsByTagName('parsererror').length && !doc.getElementsByTagName('item').length) return out;
+    var nodes = doc.getElementsByTagName('item'); if(!nodes.length) nodes = doc.getElementsByTagName('entry');
+    for(var i = 0; i < nodes.length && i < 12; i++){
+      var it = nodes[i];
+      var title = cleanText(tx(it, 'title'));
+      var desc = cleanText(tx(it, 'description') || tx(it, 'summary') || tx(it, 'content'));
+      var when = Date.parse(tx(it, 'pubDate') || tx(it, 'published') || tx(it, 'updated') || tx(it, 'dc:date')) || 0;
+      if(!title) continue;
+      /* a "small summary": the feed's blurb if it says more than the title does, otherwise the headline itself */
+      var norm = function(z){ return z.toLowerCase().replace(/[^a-z0-9]/g, ''); };
+      var sum = (desc.length > 25 && norm(desc).indexOf(norm(title).slice(0, 30)) !== 0) ? desc : title;
+      out.push({src: name, text: clip(sum, 100), when: when});
+    }
+    return out;
+  }
+  function renderNews(){
+    if(!newsPool.length){ newsCardEl.hidden = true; return; }
+    var wasHidden = newsCardEl.hidden;
+    var pages = Math.ceil(newsPool.length / NEWS_PER_PAGE);
+    newsPage = newsPage % pages;
+    var slice = newsPool.slice(newsPage * NEWS_PER_PAGE, newsPage * NEWS_PER_PAGE + NEWS_PER_PAGE);
+    newsListEl.innerHTML = '';
+    slice.forEach(function(it){
+      var li = document.createElement('li');
+      var s = document.createElement('span'); s.className = 'n-src'; s.textContent = it.src + ' : ';
+      var m = document.createElement('span'); m.className = 'n-sum'; m.textContent = it.text;
+      li.appendChild(s); li.appendChild(m); newsListEl.appendChild(li);
+    });
+    newsCardEl.hidden = false;
+    if(wasHidden){ toneCache = {}; var l = activePhotoList(); if(l && l.length) applyToneForUrl(l[photoIndex] || l[0]); }
+  }
+  function rotateNews(){
+    if(newsPool.length <= NEWS_PER_PAGE) return;
+    newsListEl.classList.add('fade');
+    setTimeout(function(){ newsPage++; renderNews(); newsListEl.classList.remove('fade'); }, 600);
+  }
+  function refreshNews(){
+    var feeds = newsFeeds();
+    if(!feeds.length){ newsPool = []; renderNews(); return; }
+    Promise.all(feeds.map(function(f){
+      return fetchFeed(f.u).then(function(t){ return parseFeed(t, f.n); }).catch(function(){ return []; });
+    })).then(function(lists){
+      /* newest first inside each source, then interleave sources so no one outlet fills the card */
+      lists.forEach(function(l){ l.sort(function(a, b){ return b.when - a.when; }); });
+      var pool = [], seenT = {}, i = 0, more = true;
+      while(more && pool.length < 16){
+        more = false;
+        lists.forEach(function(l){
+          if(i < l.length){ more = true; var k = l[i].text.toLowerCase().slice(0, 40); if(!seenT[k]){ seenT[k] = 1; pool.push(l[i]); } }
+        });
+        i++;
+      }
+      if(pool.length){ newsPool = pool; renderNews(); }          /* keep showing the old list if everything failed */
+      else if(!newsPool.length){ renderNews(); }
+    });
+  }
+  window.__newsDebug = function(){ return {n: newsPool.length, hidden: newsCardEl.hidden, text: newsListEl.innerText}; };
+  window.__newsReload = refreshNews;
+  setInterval(refreshNews, 1000 * 60 * 20);
+  newsTimer = setInterval(rotateNews, 1000 * 22);
+
+  /* ================= boot ================= */
+  refreshCalendar();
+  refreshNews();
+  albumRefresh();
+  refreshGooglePhotosAlbum().then(function(){ buildStage(); startSlideshow(); });
+})();
+</script>
+</body>
+</html>
